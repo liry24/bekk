@@ -1,5 +1,8 @@
 # Bekk CLI
 
+> [!IMPORTANT]
+> This project is work in progress.
+
 A Windows backup CLI. Backs up local folders via Robocopy and exports installed app lists (winget / Scoop).
 Config can be synced to a GitHub Gist.
 
