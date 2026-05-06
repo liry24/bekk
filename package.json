@@ -1,0 +1,67 @@
+{
+    "name": "bekk",
+    "version": "0.0.0",
+    "description": "Backup CLI for Windows",
+    "homepage": "https://github.com/liry24/bekk#readme",
+    "bugs": {
+        "url": "https://github.com/liry24/bekk/issues"
+    },
+    "license": "MIT",
+    "author": {
+        "name": "Liry24",
+        "url": "https://liry24.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/liry24/bekk.git"
+    },
+    "bin": {
+        "bekk": "dist/bekk"
+    },
+    "files": [
+        "dist/bekk",
+        "dist/bekk.cmd",
+        "dist/*-bun-*"
+    ],
+    "type": "module",
+    "scripts": {
+        "dev": "bun run src/cli.ts",
+        "build": "crust build --target windows-x64",
+        "package": "crust build --package",
+        "publish": "crust publish --stage-dir dist/npm",
+        "start": "./dist/bekk",
+        "check:types": "tsc --noEmit",
+        "lint": "oxlint",
+        "lint:fix": "oxlint --fix",
+        "fmt": "oxfmt",
+        "fmt:check": "oxfmt --check"
+    },
+    "devDependencies": {
+        "@crustjs/core": "0.0.16",
+        "@crustjs/crust": "0.0.23",
+        "@crustjs/plugins": "0.0.22",
+        "@crustjs/progress": "0.0.3",
+        "@crustjs/prompts": "0.0.13",
+        "@crustjs/store": "0.0.4",
+        "@crustjs/style": "0.1.0",
+        "@crustjs/validate": "0.0.15",
+        "@types/bun": "1.3.13",
+        "bumpp": "^11.0.1",
+        "consola": "^3.4.2",
+        "destr": "^2.0.5",
+        "ofetch": "^1.5.1",
+        "ohash": "^2.0.11",
+        "open": "^11.0.0",
+        "oxfmt": "^0.48.0",
+        "oxlint": "^1.63.0",
+        "pathe": "^2.0.3",
+        "taze": "^19.11.0",
+        "typescript": "^6.0.3",
+        "uqr": "^0.1.3",
+        "zod": "4.4.3"
+    },
+    "engines": {
+        "bun": "1.3.13"
+    },
+    "packageManager": "bun@1.3.13"
+}
