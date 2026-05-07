@@ -11,7 +11,7 @@ import pkg from '../package.json'
 import { updateNotifierCacheAdapter } from './store'
 
 export const app = new Crust('bekk')
-    .meta({ description: 'Windows backup CLI' })
+    .meta({ description: 'Cross-platform backup CLI' })
     .use(versionPlugin(pkg.version))
     .use(noColorPlugin())
     .use(autoCompletePlugin({ mode: 'help' }))

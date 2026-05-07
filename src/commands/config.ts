@@ -1,16 +1,12 @@
-import { existsSync } from 'node:fs'
-
-import { confirm, input, select } from '@crustjs/prompts'
-import { bold, dim, green, red, table } from '@crustjs/style'
-import { arg, commandValidator, promptValidator } from '@crustjs/validate/zod'
+import { CancelledError, confirm, input, multiselect, password, select } from '@crustjs/prompts'
+import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
-import { z } from 'zod'
 
 import { app } from '../app'
+import { bekkCore } from '../lib/bekk-core'
 import { normalizePath } from '../lib/pathUtils'
+import { generatePassword, setRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
-
-const pathSchema = z.string().min(1, 'Path is required')
 
 // ─── config show ──────────────────────────────────────────────────────────────
 
@@ -21,38 +17,11 @@ const showCmd = app
     .run(async () => {
         const cfg = await configStore.read()
 
-        console.log(bold('Destination:'), green(cfg.destinationRoot || dim('(not set)')))
+        console.log(bold('Backup destination:'), green(cfg.repoPath || dim('(not set)')))
         console.log()
 
         console.log(bold('Sources:'), cfg.sourcePaths.length === 0 ? dim('(not set)') : '')
         if (cfg.sourcePaths.length !== 0) for (const p of cfg.sourcePaths) console.log('  ' + p)
-
-        console.log()
-
-        console.log(bold('Local Data Backup Options:'))
-        console.log(
-            table(
-                ['Option', 'Value', 'Description'],
-                [
-                    [
-                        'mirror',
-                        String(cfg.robocopyMirror),
-                        'delete destination files not present in source',
-                    ],
-                    [
-                        'retryCount',
-                        String(cfg.robocopyRetryCount),
-                        'number of retries on failed file copy',
-                    ],
-                    ['retryWait', String(cfg.robocopyRetryWait), 'seconds to wait between retries'],
-                    [
-                        'excludeJunctions',
-                        String(cfg.robocopyExcludeJunctions),
-                        'skip symbolic links and junctions',
-                    ],
-                ],
-            ),
-        )
         console.log()
 
         const srcLabel =
@@ -62,177 +31,336 @@ const showCmd = app
         console.log(bold('App List Backup (winget sources):'), srcLabel)
         console.log()
 
+        console.log(bold('Compression:'), cfg.compression === 0 ? 'None' : String(cfg.compression))
+        console.log(bold('Pack size:'), `${cfg.packSizeMib} MiB`)
+        console.log(bold('Chunk size:'), `${cfg.chunkSizeMib} MiB`)
+        console.log(bold('Extra verify:'), cfg.extraVerify ? 'Enabled' : 'Disabled')
+        console.log()
+
+        console.log(
+            bold('Password:'),
+            cfg.savedPassword ? green('Saved in config file') : dim('OS keychain only'),
+        )
+        console.log()
+
         console.log(bold('GitHub Gist ID:'), cfg.gistId || dim('(not set)'))
     })
 
-// ─── config add ───────────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-const addCmd = app
-    .sub('config')
-    .sub('add')
-    .meta({
-        description: 'Add a backup source path',
-        usage: 'config add <path>',
+const changePassword = async () => {
+    const cfg = await configStore.read()
+
+    const entered = await password({
+        message: 'New backup password  (press Enter to auto-generate)',
     })
-    .args([arg('path', z.string().min(1, 'Path is required').describe('Folder path to add'))])
-    .run(
-        commandValidator(async ({ args }) => {
-            const path = normalizePath(args.path)
-            // Existence check after schema validation
-            if (!existsSync(path)) consola.warn(`Warning: path does not currently exist: ${path}`)
 
-            const cfg = await configStore.read()
-            if (cfg.sourcePaths.includes(path)) {
-                consola.info(`Already added: ${path}`)
-                return
-            }
-            await configStore.update((c) => ({ ...c, sourcePaths: [...c.sourcePaths, path] }))
+    let newPassword: string
+    let wasGenerated = false
+
+    if (entered.trim()) {
+        await password({
+            message: 'Confirm new password',
+            validate: (v) => (v === entered ? true : 'Passwords do not match'),
+        })
+        newPassword = entered
+    } else {
+        newPassword = generatePassword()
+        wasGenerated = true
+    }
+
+    const saveInConfig = await confirm({
+        message: 'Save password to config file?',
+        default: cfg.savedPassword !== '',
+        active: 'Yes  (⚠ synced to Gist/S3 as plaintext)',
+        inactive: 'No  (OS credential manager only — recommended)',
+    })
+
+    await setRepoPassword(newPassword)
+    await configStore.patch({ savedPassword: saveInConfig ? newPassword : '' })
+
+    if (wasGenerated) {
+        console.log()
+        console.log(yellow(bold('New auto-generated password:')))
+        console.log('  ' + bold(newPassword))
+        console.log(dim('  Keep this safe — it is required to restore your backups.'))
+    }
+    consola.success(green('Password updated.'))
+}
+
+const configureDestination = async () => {
+    const cfg = await configStore.read()
+    const raw = await input({
+        message: 'Backup destination path',
+        default: cfg.repoPath || undefined,
+        placeholder: '/path/to/repo or S3 URL',
+    })
+    const path = normalizePath(raw.trim())
+    await configStore.patch({ repoPath: path })
+    consola.success(green(`Backup destination set: ${bold(path)}`))
+}
+
+const configureSources = async () => {
+    const cfg = await configStore.read()
+
+    const action = await select<'add' | 'remove'>({
+        message: 'Source paths',
+        choices: [
+            {
+                label: 'Add a path',
+                value: 'add',
+            },
+            {
+                label: 'Remove paths',
+                value: 'remove',
+                hint: cfg.sourcePaths.length > 0 ? `${cfg.sourcePaths.length} configured` : 'none',
+            },
+        ],
+    })
+
+    if (action === 'add') {
+        consola.info(dim('Enter paths to add (leave blank to finish):'))
+        while (true) {
+            const raw = await input({
+                message: 'Add source path',
+                placeholder: 'Leave empty to finish',
+            })
+            const trimmed = raw.trim()
+            if (!trimmed) break
+            const path = normalizePath(trimmed)
+            await configStore.update((c) => {
+                if (c.sourcePaths.includes(path)) return c
+                return { ...c, sourcePaths: [...c.sourcePaths, path] }
+            })
             consola.success(green(`Added: ${bold(path)}`))
-        }),
-    )
-
-// ─── config remove ────────────────────────────────────────────────────────────
-
-const removeCmd = app
-    .sub('config')
-    .sub('remove')
-    .meta({ description: 'Remove a backup source path' })
-    .run(async () => {
-        const cfg = await configStore.read()
-        if (cfg.sourcePaths.length === 0) {
+        }
+    } else {
+        const fresh = await configStore.read()
+        if (fresh.sourcePaths.length === 0) {
             consola.info(dim('No source paths configured.'))
             return
         }
-        const target = await select<string>({
-            message: 'Select path to remove',
-            choices: cfg.sourcePaths,
+        const toRemove = await multiselect<string>({
+            message: 'Select paths to remove (Space to toggle, Enter to confirm)',
+            choices: fresh.sourcePaths.map((p) => ({ label: p, value: p })),
+            default: [],
         })
-        await configStore.update((c) => ({
-            ...c,
-            sourcePaths: c.sourcePaths.filter((p) => p !== target),
-        }))
-        consola.success(green(`Removed: ${bold(target)}`))
+        if (toRemove.length > 0) {
+            await configStore.update((c) => ({
+                ...c,
+                sourcePaths: c.sourcePaths.filter((p) => !toRemove.includes(p)),
+            }))
+            consola.success(green(`Removed ${toRemove.length} path(s).`))
+        }
+    }
+}
+
+const configureApps = async () => {
+    const cfg = await configStore.read()
+
+    const chosen = await multiselect<string>({
+        message: 'Winget sources to include in app list backup (Space to toggle)',
+        choices: [
+            { label: 'winget', value: 'winget', hint: 'community repository' },
+            { label: 'msstore', value: 'msstore', hint: 'Microsoft Store' },
+            { label: '(blank)', value: '', hint: 'sideloaded / custom installers' },
+        ],
+        default: cfg.wingetIncludeSources,
     })
 
-// ─── config dest ──────────────────────────────────────────────────────────
+    await configStore.patch({ wingetIncludeSources: chosen })
+    consola.success(green('App backup settings saved.'))
+}
 
-const destCmd = app
-    .sub('config')
-    .sub('dest')
-    .meta({
-        description: 'Set backup destination path',
-        usage: 'config dest <path>',
-    })
-    .args([arg('path', pathSchema.describe('Backup destination path'))])
-    .run(
-        commandValidator(async ({ args }) => {
-            const path = normalizePath(args.path)
-            if (!existsSync(path)) {
-                consola.error(red(`Path does not exist: ${path}`))
-                process.exit(1)
-            }
-            await configStore.patch({ destinationRoot: path })
-            consola.success(green(`Destination set: ${bold(path)}`))
-        }),
-    )
+const configureAdvanced = async () => {
+    const cfg = await configStore.read()
 
-// ─── config data ────────────────────────────────────────────────────────────
+    type AdvancedAction = 'apps' | 'compression' | 'packSize' | 'chunkSize' | 'extraVerify' | 'back'
+    let action: AdvancedAction
 
-const dataCmd = app
-    .sub('config')
-    .sub('data')
-    .meta({ description: 'Configure local data backup (robocopy) options' })
-    .run(async () => {
-        const cfg = await configStore.read()
-
-        console.log(dim('Current values shown. Press Enter to keep unchanged.'))
-        console.log()
-
-        const mirrorStr = await confirm({
-            message: 'Mirror mode: delete destination files not present in source',
-
-            default: cfg.robocopyMirror,
+    do {
+        action = await select<AdvancedAction>({
+            message: 'Advanced settings',
+            choices: [
+                {
+                    label: 'App list (winget)',
+                    value: 'apps',
+                    hint: cfg.wingetIncludeSources.join(', ') || 'none',
+                },
+                {
+                    label: 'Compression',
+                    value: 'compression',
+                    hint: cfg.compression === 0 ? 'none' : String(cfg.compression),
+                },
+                { label: 'Pack size', value: 'packSize', hint: `${cfg.packSizeMib} MiB` },
+                { label: 'Chunk size', value: 'chunkSize', hint: `${cfg.chunkSizeMib} MiB` },
+                {
+                    label: 'Extra verify',
+                    value: 'extraVerify',
+                    hint: cfg.extraVerify ? 'enabled' : 'disabled',
+                },
+                { label: '← Back', value: 'back' },
+            ],
         })
 
-        const retryCountStr = await input({
-            message: 'Number of retries on failed file copy',
+        const fresh = await configStore.read()
 
-            default: String(cfg.robocopyRetryCount),
-            validate: promptValidator(z.coerce.number().int().min(0).max(999)),
-        })
+        if (action === 'apps') {
+            await configureApps()
+        } else if (action === 'compression') {
+            type CompressionValue = -7 | 0 | 1 | 3 | 6 | 9 | 22
+            const level = await select<CompressionValue>({
+                message: 'Compression level',
+                choices: [
+                    {
+                        label: 'None (0)',
+                        value: 0 as CompressionValue,
+                        hint: 'fastest, no compression',
+                    },
+                    {
+                        label: 'Ultra-fast (-7)',
+                        value: -7 as CompressionValue,
+                        hint: 'zstd ultrafast',
+                    },
+                    {
+                        label: 'Default (1)',
+                        value: 1 as CompressionValue,
+                        hint: 'zstd level 1 (recommended)',
+                    },
+                    { label: 'Balanced (3)', value: 3 as CompressionValue, hint: 'zstd level 3' },
+                    { label: 'Good (6)', value: 6 as CompressionValue, hint: 'zstd level 6' },
+                    { label: 'High (9)', value: 9 as CompressionValue, hint: 'zstd level 9' },
+                    {
+                        label: 'Max (22)',
+                        value: 22 as CompressionValue,
+                        hint: 'zstd level 22, slowest',
+                    },
+                ],
+                default: fresh.compression as CompressionValue,
+            })
+            await configStore.patch({ compression: level })
+            consola.success(green(`Compression set to ${level}.`))
+        } else if (action === 'packSize') {
+            const raw = await input({
+                message: 'Data pack size (MiB)',
+                default: String(fresh.packSizeMib),
+                validate: (v) => {
+                    const n = Number(v)
+                    return Number.isInteger(n) && n > 0 ? true : 'Must be a positive integer'
+                },
+            })
+            await configStore.patch({ packSizeMib: Number(raw) })
+            consola.success(green(`Pack size set to ${raw} MiB.`))
+        } else if (action === 'chunkSize') {
+            const raw = await input({
+                message: 'Average chunk size (MiB)',
+                default: String(fresh.chunkSizeMib),
+                validate: (v) => {
+                    const n = Number(v)
+                    return Number.isInteger(n) && n > 0 ? true : 'Must be a positive integer'
+                },
+            })
+            await configStore.patch({ chunkSizeMib: Number(raw) })
+            consola.success(green(`Chunk size set to ${raw} MiB.`))
+        } else if (action === 'extraVerify') {
+            const enabled = await confirm({
+                message: 'Extra verify (re-decrypt/decompress before upload)',
+                default: fresh.extraVerify,
+                active: 'Enable',
+                inactive: 'Disable',
+            })
+            await configStore.patch({ extraVerify: enabled })
+            consola.success(green(`Extra verify ${enabled ? 'enabled' : 'disabled'}.`))
+        }
 
-        const retryWaitStr = await input({
-            message: 'Seconds to wait between retries',
+        // Reload hint values for the next loop iteration
+        Object.assign(cfg, await configStore.read())
+    } while (action !== 'back')
+}
 
-            default: String(cfg.robocopyRetryWait),
-            validate: promptValidator(z.coerce.number().int().min(0).max(9999)),
-        })
-
-        const excludeJunctions = await confirm({
-            message: 'Skip symbolic links and junctions',
-
-            default: cfg.robocopyExcludeJunctions,
-        })
-
-        await configStore.patch({
-            robocopyMirror: mirrorStr,
-            robocopyRetryCount: parseInt(retryCountStr, 10),
-            robocopyRetryWait: parseInt(retryWaitStr, 10),
-            robocopyExcludeJunctions: excludeJunctions,
-        })
-
-        consola.success(green('Local data backup options saved.'))
-    })
-
-// ─── config apps ─────────────────────────────────────────────────────────────
-
-const appsCmd = app
-    .sub('config')
-    .sub('apps')
-    .meta({ description: 'Configure which winget sources to include in app list backup' })
-    .run(async () => {
-        const cfg = await configStore.read()
-        const current = cfg.wingetIncludeSources
-
-        console.log(bold('=== App List Backup Settings ==='))
-        console.log(dim('Choose which winget sources to include in the backup.'))
-        console.log(dim('Current sources: ' + (current.join(', ') || '(none)')))
-        console.log()
-
-        const includeWinget = await confirm({
-            message: 'Include apps from the winget source (community repository)',
-            default: current.includes('winget'),
-        })
-
-        const includeMsstore = await confirm({
-            message: 'Include apps from the msstore source (Microsoft Store)',
-            default: current.includes('msstore'),
-        })
-
-        const includeBlank = await confirm({
-            message: 'Include apps with no source (e.g. sideloaded or custom installers)',
-            default: current.includes(''),
-        })
-
-        const sources: string[] = []
-        if (includeWinget) sources.push('winget')
-        if (includeMsstore) sources.push('msstore')
-        if (includeBlank) sources.push('')
-
-        await configStore.patch({ wingetIncludeSources: sources })
-
-        console.log()
-        consola.success(green('App backup settings saved.'))
-    })
-
-// ─── config (container) ───────────────────────────────────────────────────────
+// ─── config (interactive menu) ───────────────────────────────────────────────
 
 export const configCmd = app
     .sub('config')
     .meta({ description: 'Manage configuration' })
     .command(showCmd)
-    .command(addCmd)
-    .command(removeCmd)
-    .command(destCmd)
-    .command(dataCmd)
-    .command(appsCmd)
+    .run(async () => {
+        try {
+            const cfg = await configStore.read()
+
+            type TopAction = 'destination' | 'sources' | 'password' | 'advanced' | 'done'
+            let action: TopAction
+
+            do {
+                // Reload hints each iteration
+                Object.assign(cfg, await configStore.read())
+
+                action = await select<TopAction>({
+                    message: 'What do you want to configure?',
+                    choices: [
+                        {
+                            label: 'Backup destination',
+                            value: 'destination',
+                            hint: cfg.repoPath || 'not set',
+                        },
+                        {
+                            label: 'Source paths',
+                            value: 'sources',
+                            hint:
+                                cfg.sourcePaths.length > 0
+                                    ? `${cfg.sourcePaths.length} path(s)`
+                                    : 'not set',
+                        },
+                        {
+                            label: 'Password',
+                            value: 'password',
+                            hint: cfg.savedPassword ? 'saved in config' : 'OS keychain only',
+                        },
+                        {
+                            label: 'Advanced ▶',
+                            value: 'advanced',
+                        },
+                        {
+                            label: '✔ Done',
+                            value: 'done',
+                        },
+                    ],
+                })
+
+                if (action === 'destination') {
+                    await configureDestination()
+                } else if (action === 'sources') {
+                    await configureSources()
+                } else if (action === 'password') {
+                    await changePassword()
+                } else if (action === 'advanced') {
+                    const before = await configStore.read()
+                    await configureAdvanced()
+                    const after = await configStore.read()
+                    const advancedChanged =
+                        before.compression !== after.compression ||
+                        before.extraVerify !== after.extraVerify ||
+                        before.packSizeMib !== after.packSizeMib ||
+                        before.chunkSizeMib !== after.chunkSizeMib
+
+                    if (advancedChanged && after.repoPath) {
+                        const { resolveRepoPassword } = await import('../lib/secrets')
+                        const pw = await resolveRepoPassword()
+                        if (pw) {
+                            consola.info(dim('Applying config to repository...'))
+                            await bekkCore.applyConfig(after.repoPath, pw, {
+                                compression: after.compression,
+                                extraVerify: after.extraVerify,
+                                packSizeMib: after.packSizeMib,
+                                chunkSizeMib: after.chunkSizeMib,
+                            })
+                            consola.success(green('Repository config updated.'))
+                        }
+                    }
+                }
+            } while (action !== 'done')
+        } catch (err) {
+            if (err instanceof CancelledError) return
+            throw err
+        }
+    })

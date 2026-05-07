@@ -7,5 +7,5 @@ export default defineConfig({
     printWidth: 100,
     sortImports: {},
     sortPackageJson: {},
-    overrides: [{ files: ['**/*.yml', '**/*.yaml'], options: { tabWidth: 2 } }],
+    overrides: [{ files: ['**/*.yml', '**/*.yaml', '**/*.md'], options: { tabWidth: 2 } }],
 })

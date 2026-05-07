@@ -8,11 +8,16 @@ permissions:
   contents: write
 
 jobs:
+  build-core:
+    name: Build bekk-core binaries
+    uses: ./.github/workflows/build-core.yml
+
   build:
     name: Build & Release
     runs-on: ubuntu-latest
+    needs: build-core
     outputs:
-      binary-hash: ${{ steps.binary.outputs.hash }}
+      windows-zip-hash: ${{ steps.hashes.outputs.windows }}
 
     steps:
       - name: Checkout
@@ -32,20 +37,82 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build npm packages
+      - name: Download bekk-core Windows binary
+        uses: actions/download-artifact@v5
+        with:
+          name: bekk-core-x86_64-pc-windows-msvc
+          path: dist/npm/windows-x64/bin/
+
+      - name: Download bekk-core Linux binary
+        uses: actions/download-artifact@v5
+        with:
+          name: bekk-core-x86_64-unknown-linux-gnu
+          path: dist/npm/linux-x64/bin/
+
+      - name: Download bekk-core macOS x64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: bekk-core-x86_64-apple-darwin
+          path: dist/npm/darwin-x64/bin/
+
+      - name: Download bekk-core macOS ARM64 binary
+        uses: actions/download-artifact@v5
+        with:
+          name: bekk-core-aarch64-apple-darwin
+          path: dist/npm/darwin-arm64/bin/
+
+      - name: Make Unix binaries executable
+        run: |
+          chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
+
+      - name: Build npm packages (all platforms)
         run: bun run package
 
-      - name: Compute Windows binary hash
-        id: binary
+      - name: Make bekk Unix binaries executable
         run: |
-          BINARY="dist/npm/windows-x64/bin/bekk-bun-windows-x64-baseline.exe"
-          echo "path=$BINARY" >> "$GITHUB_OUTPUT"
-          echo "hash=$(sha256sum "$BINARY" | awk '{ print $1 }')" >> "$GITHUB_OUTPUT"
+          chmod +x dist/npm/linux-x64/bin/bekk-bun-linux-x64-baseline || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline || true
+
+      - name: Create release zip archives
+        run: |
+          mkdir -p release
+
+          # Windows x64
+          cp dist/npm/windows-x64/bin/bekk-bun-windows-x64-baseline.exe /tmp/bekk.exe
+          cp dist/npm/windows-x64/bin/bekk-core-windows-x64.exe /tmp/bekk-core.exe
+          cd /tmp && zip $OLDPWD/release/bekk-windows-x64.zip bekk.exe bekk-core.exe && cd $OLDPWD
+          rm /tmp/bekk.exe /tmp/bekk-core.exe
+
+          # Linux x64
+          cp dist/npm/linux-x64/bin/bekk-bun-linux-x64-baseline /tmp/bekk
+          cp dist/npm/linux-x64/bin/bekk-core-linux-x64 /tmp/bekk-core
+          cd /tmp && zip $OLDPWD/release/bekk-linux-x64.zip bekk bekk-core && cd $OLDPWD
+          rm /tmp/bekk /tmp/bekk-core
+
+          # macOS x64
+          cp dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline /tmp/bekk
+          cp dist/npm/darwin-x64/bin/bekk-core-macos-x64 /tmp/bekk-core
+          cd /tmp && zip $OLDPWD/release/bekk-macos-x64.zip bekk bekk-core && cd $OLDPWD
+          rm /tmp/bekk /tmp/bekk-core
+
+          # macOS ARM64
+          cp dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline /tmp/bekk
+          cp dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 /tmp/bekk-core
+          cd /tmp && zip $OLDPWD/release/bekk-macos-arm64.zip bekk bekk-core && cd $OLDPWD
+          rm /tmp/bekk /tmp/bekk-core
+
+      - name: Compute zip hashes
+        id: hashes
+        run: |
+          echo "windows=$(sha256sum release/bekk-windows-x64.zip | awk '{ print $1 }')" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ steps.binary.outputs.path }}
+          files: release/*.zip
           generate_release_notes: true
 
       - name: Upload dist artifact
@@ -106,25 +173,32 @@ jobs:
           VER="${GITHUB_REF_NAME#v}"
           REPO="${{ github.repository }}"
           TAG="${{ github.ref_name }}"
-          BINARY="bekk-bun-windows-x64-baseline.exe"
+          ZIP="bekk-windows-x64.zip"
 
           jq -n \
             --arg ver "$VER" \
-            --arg url "https://github.com/$REPO/releases/download/$TAG/$BINARY" \
-            --arg hash "${{ needs.build.outputs.binary-hash }}" \
+            --arg url "https://github.com/$REPO/releases/download/$TAG/$ZIP" \
+            --arg hash "${{ needs.build.outputs.windows-zip-hash }}" \
             --arg repo "$REPO" \
-            --arg bin "$BINARY" \
+            --arg zip "$ZIP" \
             '{
               version: $ver,
-              description: "Backup CLI for Windows",
+              description: "Cross-platform backup CLI",
               homepage: ("https://github.com/" + $repo),
-              architecture: { "64bit": { url: $url, hash: $hash } },
-              bin: [[$bin, "bekk"]],
+              architecture: {
+                "64bit": {
+                  url: $url,
+                  hash: $hash,
+                  extract_dir: ".",
+                  bin: [["bekk.exe", "bekk"]],
+                  shortcuts: [["bekk.exe", "bekk"]]
+                }
+              },
               checkver: { github: ("https://github.com/" + $repo) },
               autoupdate: {
                 architecture: {
                   "64bit": {
-                    url: ("https://github.com/" + $repo + "/releases/download/v$version/" + $bin)
+                    url: ("https://github.com/" + $repo + "/releases/download/v$version/" + $zip)
                   }
                 }
               }

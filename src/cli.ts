@@ -1,18 +1,24 @@
 import { app } from './app'
 import { backupCmd } from './commands/backup'
 import { configCmd } from './commands/config'
+import { daemonCmd } from './commands/daemon'
 import { gistCmd } from './commands/gist'
 import { initCmd } from './commands/init'
-import { loginCmd } from './commands/login'
-import { logoutCmd } from './commands/logout'
+import { pullCmd } from './commands/pull'
+import { pushCmd } from './commands/push'
+import { restoreCmd } from './commands/restore'
 import { scheduleCmd } from './commands/schedule'
+import { snapshotsCmd } from './commands/snapshots'
 
 await app
     .command(initCmd)
     .command(backupCmd)
+    .command(restoreCmd)
+    .command(snapshotsCmd)
     .command(configCmd)
-    .command(loginCmd)
-    .command(logoutCmd)
+    .command(pushCmd)
+    .command(pullCmd)
     .command(gistCmd)
     .command(scheduleCmd)
+    .command(daemonCmd)
     .execute()

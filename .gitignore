@@ -32,3 +32,5 @@ report.*.*.*.*.json
 
 # Finder (MacOS) folder config
 .DS_Store
+
+bekk-core/target

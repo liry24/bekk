@@ -1,3 +1,4 @@
+import { dataDir } from '@crustjs/store'
 import { blue, bold, cyan, dim, orderedList } from '@crustjs/style'
 import { destr } from 'destr'
 import { ofetch } from 'ofetch'
@@ -140,13 +141,12 @@ export const pushGist = async (token: string) => {
         [fileName]: { content: JSON.stringify(cfg, null, 2) },
     }
 
-    // Include app lists from destination if they exist
-    if (cfg.destinationRoot) {
-        for (const name of ['scoop.json', 'winget.json'] as const) {
-            const f = Bun.file(join(cfg.destinationRoot, name))
-            if (await f.exists()) {
-                files[name] = { content: await f.text() }
-            }
+    // Include app lists from bekk data dir if they exist
+    const appListsDir = join(dataDir('bekk'), 'app-lists')
+    for (const name of ['scoop.json', 'winget.json'] as const) {
+        const f = Bun.file(join(appListsDir, name))
+        if (await f.exists()) {
+            files[name] = { content: await f.text() }
         }
     }
 
@@ -193,20 +193,20 @@ export const pullGist = async (gistIdOrUrl: string, token?: string) => {
 
     await configStore.write({
         sourcePaths: Array.isArray(parsed.sourcePaths) ? (parsed.sourcePaths as string[]) : [],
-        destinationRoot: typeof parsed.destinationRoot === 'string' ? parsed.destinationRoot : '',
+        repoPath: typeof parsed.repoPath === 'string' ? parsed.repoPath : '',
         gistId: typeof parsed.gistId === 'string' ? parsed.gistId : gistId,
-        robocopyMirror: typeof parsed.robocopyMirror === 'boolean' ? parsed.robocopyMirror : true,
-        robocopyRetryCount:
-            typeof parsed.robocopyRetryCount === 'number' ? parsed.robocopyRetryCount : 3,
-        robocopyRetryWait:
-            typeof parsed.robocopyRetryWait === 'number' ? parsed.robocopyRetryWait : 5,
-        robocopyExcludeJunctions:
-            typeof parsed.robocopyExcludeJunctions === 'boolean'
-                ? parsed.robocopyExcludeJunctions
-                : true,
+        gistEnabled: typeof parsed.gistEnabled === 'boolean' ? parsed.gistEnabled : false,
+        s3DestinationsJson:
+            typeof parsed.s3DestinationsJson === 'string' ? parsed.s3DestinationsJson : '[]',
         wingetIncludeSources: Array.isArray(parsed.wingetIncludeSources)
             ? (parsed.wingetIncludeSources as string[])
             : ['winget', 'msstore'],
+        cronSchedule: typeof parsed.cronSchedule === 'string' ? parsed.cronSchedule : '',
+        compression: typeof parsed.compression === 'number' ? parsed.compression : 1,
+        extraVerify: typeof parsed.extraVerify === 'boolean' ? parsed.extraVerify : true,
+        packSizeMib: typeof parsed.packSizeMib === 'number' ? parsed.packSizeMib : 32,
+        chunkSizeMib: typeof parsed.chunkSizeMib === 'number' ? parsed.chunkSizeMib : 1,
+        savedPassword: typeof parsed.savedPassword === 'string' ? parsed.savedPassword : '',
     })
 
     console.log(`Config loaded from ${selectedName}`)

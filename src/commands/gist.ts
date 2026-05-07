@@ -1,83 +1,82 @@
-import { spinner } from '@crustjs/progress'
-import { input } from '@crustjs/prompts'
-import { bold, dim, green, link } from '@crustjs/style'
-import { arg, commandValidator } from '@crustjs/validate/zod'
+import { confirm } from '@crustjs/prompts'
+import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import { createConsola } from 'consola'
-import { z } from 'zod'
 
 import { app } from '../app'
-import { ensureToken, pullGist, pushGist, resolveGistId } from '../lib/github'
+import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '../lib/github'
+import { authStore, configStore } from '../store'
 
 const logger = createConsola({ formatOptions: { date: false } })
 
-const pushCmd = app
+// ─── gist login ───────────────────────────────────────────────────────────────
+
+const loginCmd = app
     .sub('gist')
-    .sub('push')
-    .meta({ description: 'Upload config to GitHub Gist' })
+    .sub('login')
+    .meta({ description: 'Authenticate via GitHub Device Flow' })
     .run(async () => {
-        const token = await ensureToken()
+        const { token } = await authStore.read()
 
-        let gistUrl!: string
-        await spinner({
-            message: 'Uploading to Gist...',
-            task: async ({ updateMessage }) => {
-                gistUrl = await pushGist(token)
-                updateMessage('Upload complete')
-            },
-        })
-
-        logger.success(green(bold('Uploaded to Gist.')))
-        logger.log('  ' + link(gistUrl, gistUrl))
-    })
-
-const pullCmd = app
-    .sub('gist')
-    .sub('pull')
-    .meta({
-        description: 'Download config from GitHub Gist',
-        usage: 'gist pull [gist-id-or-url]',
-    })
-    .args([
-        arg(
-            'gistId',
-            z
-                .string()
-                .optional()
-                .refine((v) => !v || !!resolveGistId(v), 'Must be a valid Gist ID or URL')
-                .describe('Gist ID or URL (prompted if omitted)'),
-        ),
-    ])
-    .run(
-        commandValidator(async ({ args }) => {
-            let gistIdOrUrl = args.gistId
-            if (!gistIdOrUrl) {
-                gistIdOrUrl = await input({
-                    message: 'Enter Gist ID or URL',
-                    validate: (v) => !!resolveGistId(v) || 'Must be a valid Gist ID or URL',
-                })
+        if (token) {
+            const username = await getAuthenticatedUser(token)
+            if (username) {
+                logger.ready(green(`Already authenticated as ${bold(cyan(username))}.`))
+                logger.info(dim('Run `bekk gist logout` to sign out.'))
+                return
             }
+            logger.warn(yellow('Stored token is invalid. Re-authenticating...'))
+        }
 
-            const token = await ensureToken().catch(() => {
-                logger.warn('Not authenticated — only public Gists can be fetched.')
-                return undefined
-            })
+        logger.info('Starting GitHub Device Flow authentication...')
 
-            await spinner({
-                message: 'Fetching config from Gist...',
-                task: async () => {
-                    await pullGist(gistIdOrUrl!, token)
-                },
-            })
+        const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
+        await authStore.patch({ token: newToken })
+        await configStore.patch({ gistEnabled: true })
 
-            logger.success(green(bold('Config loaded from Gist.')))
-            logger.log(dim('  Run `bekk config show` to verify the loaded settings.'))
-        }),
-    )
+        const username = await getAuthenticatedUser(newToken)
+        const label = username ? bold(cyan(username)) : 'unknown'
+        logger.success(green(`Authentication complete. Signed in as ${label}.`))
+        logger.info(dim('Gist sync is now enabled. Run `bekk push` to upload your config.'))
+    })
+
+// ─── gist logout ──────────────────────────────────────────────────────────────
+
+const logoutCmd = app
+    .sub('gist')
+    .sub('logout')
+    .meta({ description: 'Remove stored authentication token' })
+    .run(async () => {
+        const { token } = await authStore.read()
+
+        if (!token) {
+            logger.log(dim('Not authenticated.'))
+            return
+        }
+
+        const username = await getAuthenticatedUser(token)
+        const label = username ? bold(cyan(username)) : 'unknown'
+
+        logger.log(`Currently signed in as ${label}.`)
+        console.log()
+
+        const ok = await confirm({
+            message: yellow(`Sign out of ${label}?`),
+            default: false,
+        })
+        if (!ok) {
+            logger.log(dim('Cancelled.'))
+            return
+        }
+
+        await authStore.patch({ token: '' })
+        await configStore.patch({ gistEnabled: false })
+        logger.success(green('Signed out. Gist sync disabled.'))
+    })
 
 // ─── gist (container) ─────────────────────────────────────────────────────────
 
 export const gistCmd = app
     .sub('gist')
-    .meta({ description: 'Sync config with GitHub Gist' })
-    .command(pushCmd)
-    .command(pullCmd)
+    .meta({ description: 'Manage GitHub authentication for Gist sync' })
+    .command(loginCmd)
+    .command(logoutCmd)

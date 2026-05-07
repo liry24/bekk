@@ -5,5 +5,5 @@ export default defineConfig({
     commit: true,
     tag: true,
     push: true,
-    files: ['package.json'],
+    files: ['package.json', 'bekk-core/Cargo.toml'],
 })

@@ -1,0 +1,123 @@
+import { dataDir } from '@crustjs/store'
+import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
+import consola from 'consola'
+import { join } from 'pathe'
+
+import { app } from '../app'
+import { backupApps } from '../lib/apps'
+import { bekkCore } from '../lib/bekk-core'
+import { resolveRepoPassword } from '../lib/secrets'
+import { configStore } from '../store'
+
+// Append a log entry to the daemon log file
+const appendLog = async (logPath: string, level: 'INFO' | 'ERROR', message: string) => {
+    const timestamp = new Date().toISOString()
+    const line = `[${timestamp}] [${level}] ${message}\n`
+    await Bun.file(logPath)
+        .exists()
+        .then(async () => {
+            const existing = await Bun.file(logPath)
+                .text()
+                .catch(() => '')
+            await Bun.write(logPath, existing + line)
+        })
+}
+
+// Run a single backup cycle (same logic as backupCmd but without interactive prompts)
+const runBackupCycle = async (logPath: string) => {
+    const cfg = await configStore.read()
+    const password = await resolveRepoPassword()
+
+    if (!cfg.repoPath || !password) {
+        const msg = !cfg.repoPath ? 'Repository not configured' : 'Repository password not stored'
+        await appendLog(logPath, 'ERROR', msg)
+        return
+    }
+
+    if (cfg.sourcePaths.length === 0) {
+        await appendLog(logPath, 'ERROR', 'No source paths configured')
+        return
+    }
+
+    const appListsDir = join(dataDir('bekk'), 'app-lists')
+    try {
+        const { scoop, winget } = await backupApps(appListsDir, cfg.wingetIncludeSources)
+        const parts: string[] = []
+        if (scoop !== null) parts.push(`scoop:${scoop.length}`)
+        parts.push(`winget:${winget.length}`)
+        await appendLog(logPath, 'INFO', `App lists saved (${parts.join(', ')})`)
+    } catch (err) {
+        await appendLog(
+            logPath,
+            'ERROR',
+            'App list backup failed: ' + (err instanceof Error ? err.message : String(err)),
+        )
+    }
+
+    const sources = [...cfg.sourcePaths, appListsDir]
+    const result = await bekkCore.backup(cfg.repoPath, password, sources, false, undefined)
+
+    if (result.status === 'error') {
+        await appendLog(logPath, 'ERROR', 'Backup failed: ' + result.message)
+        return
+    }
+
+    const snapshotId =
+        result.status === 'ok' && 'data' in result && result.data
+            ? result.data.snapshot_id
+            : 'unknown'
+    await appendLog(logPath, 'INFO', `Backup complete — snapshot ${snapshotId.slice(0, 8)}`)
+}
+
+export const daemonCmd = app
+    .sub('daemon')
+    .meta({ description: 'Run the backup daemon (stays resident, triggers via cron schedule)' })
+    .run(async () => {
+        const cfg = await configStore.read()
+        const logPath = join(dataDir('bekk'), 'daemon.log')
+
+        if (!cfg.cronSchedule) {
+            consola.error(
+                'No cron schedule configured. Run ' + cyan('bekk schedule register') + ' first.',
+            )
+            process.exit(1)
+        }
+
+        // Validate schedule using Bun.cron.parse
+        const next = Bun.cron.parse(cfg.cronSchedule)
+        if (next === null) {
+            consola.error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
+            process.exit(1)
+        }
+
+        console.log(green('✓ ' + bold('bekk daemon started')))
+        console.log(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
+        console.log(dim('  Next run:  ') + cyan(next.toLocaleString()))
+        console.log(dim('  Log file:  ') + dim(logPath))
+        console.log()
+        console.log(yellow('Press Ctrl+C to stop.'))
+
+        await appendLog(logPath, 'INFO', `Daemon started — schedule: ${cfg.cronSchedule}`)
+
+        // Register in-process cron job
+        Bun.cron(cfg.cronSchedule, async () => {
+            const now = new Date().toISOString()
+            consola.info(`[${now}] Running scheduled backup...`)
+            try {
+                await runBackupCycle(logPath)
+                const nextRun = Bun.cron.parse(cfg.cronSchedule)
+                if (nextRun) {
+                    consola.success(
+                        green('Backup complete.') + dim(`  Next run: ${nextRun.toLocaleString()}`),
+                    )
+                }
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                consola.error(red('Backup error: ') + msg)
+                await appendLog(logPath, 'ERROR', 'Unhandled error: ' + msg)
+            }
+        })
+
+        // Keep process alive indefinitely
+        await new Promise<never>(() => {})
+    })

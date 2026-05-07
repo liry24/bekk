@@ -1,15 +1,19 @@
 /**
- * Check whether the current process is running with Windows Administrator privileges.
- * Uses `net session` which requires elevation; exit code 0 means admin.
+ * Check whether the current process is running with elevated privileges.
+ *   Windows → Administrator (via `net session`)
+ *   macOS/Linux → root (uid === 0)
  */
 export const isAdmin = () => {
-    try {
-        const result = Bun.spawnSync(['net', 'session'], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-        })
-        return result.exitCode === 0
-    } catch {
-        return false
-    }
+    if (process.platform === 'win32')
+        try {
+            const result = Bun.spawnSync(['net', 'session'], {
+                stdout: 'pipe',
+                stderr: 'pipe',
+            })
+            return result.exitCode === 0
+        } catch {
+            return false
+        }
+    // macOS / Linux
+    return (process as NodeJS.Process & { getuid?: () => number }).getuid?.() === 0
 }

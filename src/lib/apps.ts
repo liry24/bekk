@@ -37,9 +37,8 @@ const parseFixedWidthTable = (output: string) => {
     const cols: { start: number; name: string }[] = []
     const dashRe = /-+/g
     let m: RegExpExecArray | null
-    while ((m = dashRe.exec(sep)) !== null) {
-        cols.push({ start: m.index, name: '' })
-    }
+    while ((m = dashRe.exec(sep)) !== null) cols.push({ start: m.index, name: '' })
+
     if (cols.length === 0) return null
 
     // Extract column names from the header line
@@ -55,11 +54,12 @@ const parseFixedWidthTable = (output: string) => {
         if (/^\d+\s+\S/.test(line.trim())) continue
 
         const row: Record<string, string> = {}
-        for (let i = 0; i < cols.length; i++) {
-            const end = cols[i + 1]?.start ?? line.length
+        for (let i = 0; i < cols.length; i++)
             row[cols[i]!.name] =
-                line.length > cols[i]!.start ? line.substring(cols[i]!.start, end).trim() : ''
-        }
+                line.length > cols[i]!.start
+                    ? line.substring(cols[i]!.start, cols[i + 1]?.start ?? line.length).trim()
+                    : ''
+
         // Skip completely empty rows
         if (Object.values(row).every((v) => !v)) continue
         rows.push(row)
@@ -71,7 +71,7 @@ const parseFixedWidthTable = (output: string) => {
  * Returns a list of installed Scoop apps, or `null` if Scoop is not installed.
  * Silently returns null on any error (no warning displayed).
  */
-export const listScoop = (): ScoopApp[] | null => {
+export const listScoop = () => {
     // -ExecutionPolicy Bypass is required: scoop is a .ps1 script and the default
     // policy in a Bun child process blocks unsigned scripts.
     const result = Bun.spawnSync(
@@ -107,7 +107,7 @@ export const listScoop = (): ScoopApp[] | null => {
  * sources.  An empty string `''` in `includeSources` matches apps with no
  * known source (e.g. sideloaded packages).
  */
-export const listWinget = (includeSources: string[]): WingetApp[] => {
+export const listWinget = (includeSources: string[]) => {
     const result = Bun.spawnSync(
         [
             'powershell.exe',
@@ -160,10 +160,7 @@ export const listWinget = (includeSources: string[]): WingetApp[] => {
  *   - `scoop.json`  — omitted if Scoop is not installed
  *   - `winget.json` — filtered by `wingetIncludeSources`
  */
-export const backupApps = async (
-    destinationRoot: string,
-    wingetIncludeSources: string[],
-): Promise<{ scoop: ScoopApp[] | null; winget: WingetApp[] }> => {
+export const backupApps = async (destinationRoot: string, wingetIncludeSources: string[]) => {
     const scoop = listScoop()
     const winget = listWinget(wingetIncludeSources)
 

@@ -1,0 +1,149 @@
+import { join, dirname } from 'pathe'
+
+import { toRepoArg } from './pathUtils'
+
+const bekkCoreBin = () => {
+    const ext = process.platform === 'win32' ? '.exe' : ''
+    const name = `bekk-core${ext}`
+
+    // In a compiled Bun standalone binary, process.execPath is the bekk binary itself.
+    // bekk-core is expected in the same directory.
+    // In development (bun run src/cli.ts), fall back to the project-local build output.
+    const exeDir = dirname(process.execPath)
+    const bundledPath = join(exeDir, name)
+
+    // Dev fallback: bekk-core/target/debug/bekk-core(.exe)
+    if (/bun(\.exe)?$/i.test(process.execPath))
+        return join(import.meta.dir, '..', '..', 'bekk-core', 'target', 'debug', name)
+
+    return bundledPath
+}
+
+// ─── Response types ───────────────────────────────────────────────────────────
+
+export type CoreResult<T = unknown> =
+    | { status: 'ok'; data: T }
+    | { status: 'ok' }
+    | { status: 'error'; message: string }
+
+export interface BackupData {
+    snapshot_id: string
+    time: string
+    paths: string[]
+}
+
+export interface SnapshotEntry {
+    id: string
+    time: string
+    paths: string[]
+    tags: string[]
+    hostname: string
+    username: string
+}
+
+// ─── Runner ───────────────────────────────────────────────────────────────────
+
+const runBekkCore = async (args: string[], env: Record<string, string> = {}) => {
+    const bin = bekkCoreBin()
+    const proc = Bun.spawn([bin, ...args], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...Bun.env, ...env } as Record<string, string>,
+    })
+    await proc.exited
+    const stdout = await new Response(proc.stdout).text()
+    if (!stdout.trim()) {
+        const stderr = await new Response(proc.stderr).text()
+        return { status: 'error', message: stderr.trim() || 'bekk-core returned no output' }
+    }
+    try {
+        return JSON.parse(stdout) as CoreResult
+    } catch {
+        return { status: 'error', message: `bekk-core output is not valid JSON: ${stdout}` }
+    }
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export interface PerfOpts {
+    compression?: number
+    extraVerify?: boolean
+    packSizeMib?: number
+    chunkSizeMib?: number
+}
+
+export const bekkCore = {
+    init(repo: string, password: string, perf: PerfOpts = {}) {
+        const { compression = 1, extraVerify = true, packSizeMib = 32, chunkSizeMib = 1 } = perf
+        const args = [
+            'init',
+            '--repo',
+            toRepoArg(repo),
+            '--compression',
+            String(compression),
+            '--pack-size',
+            String(packSizeMib),
+            '--chunk-size',
+            String(chunkSizeMib),
+        ]
+        if (!extraVerify) args.push('--no-extra-verify')
+        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+    },
+
+    backup(
+        repo: string,
+        password: string,
+        sources: string[],
+        dryRun = false,
+        tag?: string,
+    ): Promise<CoreResult<BackupData>> {
+        const args = [
+            'backup',
+            '--repo',
+            toRepoArg(repo),
+            ...sources.flatMap((s) => ['--source', s]),
+        ]
+        if (dryRun) args.push('--dry-run')
+        if (tag) args.push('--tag', tag)
+        return runBekkCore(args, { BEKK_REPO_PASSWORD: password }) as Promise<
+            CoreResult<BackupData>
+        >
+    },
+
+    restore(repo: string, password: string, target: string, snapshot = 'latest', dryRun = false) {
+        const args = [
+            'restore',
+            '--repo',
+            toRepoArg(repo),
+            '--snapshot',
+            snapshot,
+            '--target',
+            target,
+        ]
+        if (dryRun) args.push('--dry-run')
+        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+    },
+
+    snapshots(repo: string, password: string): Promise<CoreResult<SnapshotEntry[]>> {
+        return runBekkCore(['snapshots', '--repo', toRepoArg(repo)], {
+            BEKK_REPO_PASSWORD: password,
+        }) as Promise<CoreResult<SnapshotEntry[]>>
+    },
+
+    applyConfig(repo: string, password: string, perf: PerfOpts = {}) {
+        const { compression = 1, extraVerify = true, packSizeMib = 32, chunkSizeMib = 1 } = perf
+        const args = [
+            'apply-config',
+            '--repo',
+            toRepoArg(repo),
+            '--compression',
+            String(compression),
+            '--pack-size',
+            String(packSizeMib),
+            '--chunk-size',
+            String(chunkSizeMib),
+        ]
+        if (!extraVerify) args.push('--no-extra-verify')
+        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+    },
+}

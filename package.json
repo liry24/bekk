@@ -21,12 +21,17 @@
     "files": [
         "dist/bekk",
         "dist/bekk.cmd",
-        "dist/*-bun-*"
+        "dist/*-bun-*",
+        "dist/bekk-core*"
     ],
     "type": "module",
     "scripts": {
         "dev": "bun run src/cli.ts",
-        "build": "crust build --target windows-x64",
+        "build": "crust build",
+        "build:core": "cargo build --manifest-path bekk-core/Cargo.toml",
+        "build:core:release": "cargo build --release --manifest-path bekk-core/Cargo.toml",
+        "build:all": "bun run build:core && bun run build",
+        "cargo:check": "cargo check --manifest-path bekk-core/Cargo.toml",
         "package": "crust build --package",
         "publish": "crust publish --stage-dir dist/npm",
         "start": "./dist/bekk",
@@ -50,7 +55,6 @@
         "consola": "^3.4.2",
         "destr": "^2.0.5",
         "ofetch": "^1.5.1",
-        "ohash": "^2.0.11",
         "open": "^11.0.0",
         "oxfmt": "^0.48.0",
         "oxlint": "^1.63.0",

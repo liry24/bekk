@@ -14,7 +14,7 @@ export const configStore = createStore({
             default: [] as string[],
             validate: fieldSync(z.array(z.string())),
         },
-        destinationRoot: {
+        repoPath: {
             type: 'string',
             default: '',
             validate: fieldSync(z.string()),
@@ -24,32 +24,52 @@ export const configStore = createStore({
             default: '',
             validate: fieldSync(z.string()),
         },
-        robocopyMirror: {
-            type: 'boolean',
-            default: true,
-            validate: fieldSync(z.boolean()),
-        },
-        robocopyRetryCount: {
-            type: 'number',
-            default: 3,
-            validate: fieldSync(z.number().int().min(0).max(999)),
-        },
-        robocopyRetryWait: {
-            type: 'number',
-            default: 5,
-            validate: fieldSync(z.number().int().min(0).max(9999)),
-        },
-        robocopyExcludeJunctions: {
-            type: 'boolean',
-            default: true,
-            validate: fieldSync(z.boolean()),
-        },
         wingetIncludeSources: {
             type: 'string',
             array: true,
             // Include winget and msstore by default; exclude blank-source apps
             default: ['winget', 'msstore'] as string[],
             validate: fieldSync(z.array(z.string())),
+        },
+        cronSchedule: {
+            type: 'string',
+            default: '',
+            validate: fieldSync(z.string()),
+        },
+        gistEnabled: {
+            type: 'boolean',
+            default: false,
+            validate: fieldSync(z.boolean()),
+        },
+        s3DestinationsJson: {
+            type: 'string',
+            default: '[]',
+            validate: fieldSync(z.string()),
+        },
+        compression: {
+            type: 'number',
+            default: 1,
+            validate: fieldSync(z.number().int()),
+        },
+        extraVerify: {
+            type: 'boolean',
+            default: true,
+            validate: fieldSync(z.boolean()),
+        },
+        packSizeMib: {
+            type: 'number',
+            default: 32,
+            validate: fieldSync(z.number().int().positive()),
+        },
+        chunkSizeMib: {
+            type: 'number',
+            default: 1,
+            validate: fieldSync(z.number().int().positive()),
+        },
+        savedPassword: {
+            type: 'string',
+            default: '',
+            validate: fieldSync(z.string()),
         },
     },
 })
