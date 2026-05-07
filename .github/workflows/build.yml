@@ -1,16 +1,19 @@
-name: Build
+name: 'CI: Lint, Format & Type Check'
 
 on:
   push:
-    branches: [main, dev]
+    branches: [dev]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Lint, Type Check & Build
+  check:
+    name: Lint, Format & Type Check
     runs-on: ubuntu-latest
-    concurrency:
-      group: build-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - name: Checkout
@@ -40,10 +43,3 @@ jobs:
 
       - name: Build
         run: bun run build
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: bekk-windows-x64
-          path: dist/
-          if-no-files-found: error
