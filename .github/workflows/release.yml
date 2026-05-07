@@ -16,19 +16,15 @@ jobs:
     outputs:
       tag: ${{ steps.get-tag.outputs.tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Fetch tags
-        run: git fetch --tags --force
-
       - name: Get release tag
         id: get-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          TAG=$(git tag --points-at HEAD | grep -E '^v[0-9]' | head -1)
+          TAG=$(gh api "repos/${{ github.repository }}/tags" --paginate \
+            --jq ".[] | select(.commit.sha == \"$HEAD_SHA\") | .name" \
+            | grep -E '^v[0-9]' | head -1)
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
   build-core:
