@@ -96,8 +96,8 @@ jobs:
       - name: Make bekk Unix binaries executable
         run: |
           chmod +x dist/npm/linux-x64/bin/bekk-bun-linux-x64-baseline || true
-          chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline || true
-          chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64 || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64 || true
           chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
           chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
           chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
@@ -119,13 +119,13 @@ jobs:
           rm /tmp/bekk /tmp/bekk-core
 
           # macOS x64
-          cp dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline /tmp/bekk
+          cp dist/npm/darwin-x64/bin/bekk-bun-darwin-x64 /tmp/bekk
           cp dist/npm/darwin-x64/bin/bekk-core-macos-x64 /tmp/bekk-core
           cd /tmp && zip $OLDPWD/release/bekk-macos-x64.zip bekk bekk-core && cd $OLDPWD
           rm /tmp/bekk /tmp/bekk-core
 
           # macOS ARM64
-          cp dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline /tmp/bekk
+          cp dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64 /tmp/bekk
           cp dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 /tmp/bekk-core
           cd /tmp && zip $OLDPWD/release/bekk-macos-arm64.zip bekk bekk-core && cd $OLDPWD
           rm /tmp/bekk /tmp/bekk-core
