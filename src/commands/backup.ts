@@ -104,20 +104,17 @@ export const backupCmd = app
                         if (result.status === 'error') throw new Error(result.message)
                         if (result.status === 'ok' && 'data' in result && result.data) {
                             snapshotId = result.data.snapshot_id
-                            updateMessage(
-                                `Backup complete  —  snapshot ${dim(snapshotId.slice(0, 8))}`,
-                            )
+                            if (snapshotId) {
+                                updateMessage(
+                                    green(bold('Backup complete')) +
+                                        `  snapshot ${dim(snapshotId.slice(0, 8))}`,
+                                )
+                            } else if (flags.dryRun) {
+                                updateMessage(green('[dry run] Backup simulation complete.'))
+                            }
                         }
                     },
                 })
-                if (snapshotId) {
-                    consola.success(
-                        green(bold('Backup complete')) +
-                            `  snapshot ${dim(snapshotId.slice(0, 8))}`,
-                    )
-                } else if (flags.dryRun) {
-                    consola.success(green('[dry run] Backup simulation complete.'))
-                }
             } catch (err) {
                 consola.error(
                     red('Backup failed: ') + (err instanceof Error ? err.message : String(err)),
