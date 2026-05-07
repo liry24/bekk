@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: write
@@ -10,6 +13,7 @@ permissions:
 jobs:
   build-core:
     name: Build bekk-core binaries
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.head_ref == 'dev')
     uses: ./.github/workflows/build-core.yml
 
   build:
@@ -125,6 +129,7 @@ jobs:
     name: Publish to npm
     needs: build
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.head_ref == 'dev')
 
     steps:
       - name: Checkout
@@ -159,6 +164,7 @@ jobs:
     name: Update Scoop bucket
     needs: build
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.head_ref == 'dev')
 
     steps:
       - name: Checkout Scoop bucket
