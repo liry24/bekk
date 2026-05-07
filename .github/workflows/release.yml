@@ -180,7 +180,7 @@ jobs:
           path: dist/
 
       - name: Publish to npm
-        run: npm run publish
+        run: bun publish
 
   update-scoop:
     name: Update Scoop bucket
