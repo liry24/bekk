@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build npm packages (all platforms)
+        run: bun run package
+
       - name: Download bekk-core Windows binary
         uses: actions/download-artifact@v5
         with:
@@ -90,20 +93,14 @@ jobs:
           name: bekk-core-aarch64-apple-darwin
           path: dist/npm/darwin-arm64/bin/
 
-      - name: Make Unix binaries executable
-        run: |
-          chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
-          chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
-          chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
-
-      - name: Build npm packages (all platforms)
-        run: bun run package
-
       - name: Make bekk Unix binaries executable
         run: |
           chmod +x dist/npm/linux-x64/bin/bekk-bun-linux-x64-baseline || true
           chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline || true
           chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline || true
+          chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
 
       - name: Create release zip archives
         run: |
