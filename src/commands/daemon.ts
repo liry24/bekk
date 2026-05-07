@@ -1,3 +1,5 @@
+import { appendFile } from 'node:fs/promises'
+
 import { dataDir } from '@crustjs/store'
 import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import consola from 'consola'
@@ -13,14 +15,7 @@ import { configStore } from '../store'
 const appendLog = async (logPath: string, level: 'INFO' | 'ERROR', message: string) => {
     const timestamp = new Date().toISOString()
     const line = `[${timestamp}] [${level}] ${message}\n`
-    await Bun.file(logPath)
-        .exists()
-        .then(async () => {
-            const existing = await Bun.file(logPath)
-                .text()
-                .catch(() => '')
-            await Bun.write(logPath, existing + line)
-        })
+    await appendFile(logPath, line)
 }
 
 // Run a single backup cycle (same logic as backupCmd but without interactive prompts)
