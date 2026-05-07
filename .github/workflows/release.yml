@@ -180,7 +180,13 @@ jobs:
           path: dist/
 
       - name: Publish to npm
-        run: bun run publish
+        run: |
+          for dir in dist/npm/linux-x64 dist/npm/linux-arm64 dist/npm/darwin-x64 dist/npm/darwin-arm64 dist/npm/windows-x64 dist/npm/windows-arm64 dist/npm/root; do
+            if [ -d "$dir" ]; then
+              echo "Publishing $dir..."
+              npm publish "$dir" --access public
+            fi
+          done
 
   update-scoop:
     name: Update Scoop bucket
