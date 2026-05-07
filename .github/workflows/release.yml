@@ -71,25 +71,25 @@ jobs:
         run: bun run package
 
       - name: Download bekk-core Windows binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-pc-windows-msvc
           path: dist/npm/windows-x64/bin/
 
       - name: Download bekk-core Linux binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-unknown-linux-gnu
           path: dist/npm/linux-x64/bin/
 
       - name: Download bekk-core macOS x64 binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-apple-darwin
           path: dist/npm/darwin-x64/bin/
 
       - name: Download bekk-core macOS ARM64 binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-aarch64-apple-darwin
           path: dist/npm/darwin-arm64/bin/
@@ -144,7 +144,7 @@ jobs:
           generate_release_notes: true
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -174,7 +174,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download dist artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
