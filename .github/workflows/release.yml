@@ -4,6 +4,7 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -58,6 +59,7 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -180,7 +182,7 @@ jobs:
           path: dist/
 
       - name: Publish to npm
-        run: bun publish
+        run: bun run package && bun run publish --access public
 
   update-scoop:
     name: Update Scoop bucket
