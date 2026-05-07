@@ -215,8 +215,6 @@ const registerCmd = app
             return
         }
 
-        await configStore.patch({ cronSchedule: trimmedExpr })
-
         try {
             if (process.platform === 'win32') registerWindows(exePath, admin)
             else if (process.platform === 'darwin') await registerMacOS(exePath, admin)
@@ -228,6 +226,8 @@ const registerCmd = app
             )
             process.exit(1)
         }
+
+        await configStore.patch({ cronSchedule: trimmedExpr })
 
         console.log(green('✓ ' + bold('Daemon registered.')))
         console.log(dim('  Start manually now with: ') + cyan('bekk daemon'))

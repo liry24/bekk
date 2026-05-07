@@ -1,7 +1,5 @@
-import { dataDir } from '@crustjs/store'
 import { destr } from 'destr'
 import { ofetch } from 'ofetch'
-import { join } from 'pathe'
 
 import { configStore } from '../../store'
 import { resolveGistId } from '../github'
@@ -91,7 +89,6 @@ export class GistBackend implements SyncBackend {
         const parsedConfig = destr<Record<string, unknown>>(configContent)
 
         // Read app lists from Gist if present
-        const appListsDir = join(dataDir('bekk'), 'app-lists')
         let scoop: import('./types').SyncData['appLists']['scoop'] = null
         let winget: import('./types').SyncData['appLists']['winget'] = []
 
@@ -116,8 +113,6 @@ export class GistBackend implements SyncBackend {
                 }))
             winget = destr(content) ?? []
         }
-
-        void appListsDir
 
         return {
             config: {

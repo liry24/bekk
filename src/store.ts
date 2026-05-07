@@ -49,7 +49,7 @@ export const configStore = createStore({
         compression: {
             type: 'number',
             default: 1,
-            validate: fieldSync(z.number().int()),
+            validate: fieldSync(z.number().int().min(-7).max(22)),
         },
         extraVerify: {
             type: 'boolean',
