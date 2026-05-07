@@ -1,6 +1,6 @@
 {
     "name": "bekk",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "description": "Backup CLI for Windows",
     "homepage": "https://github.com/liry24/bekk#readme",
     "bugs": {
@@ -39,7 +39,8 @@
         "lint": "oxlint",
         "lint:fix": "oxlint --fix",
         "fmt": "oxfmt",
-        "fmt:check": "oxfmt --check"
+        "fmt:check": "oxfmt --check",
+        "bump:hook": "cargo update --manifest-path bekk-core/Cargo.toml && git add bekk-core/Cargo.lock"
     },
     "devDependencies": {
         "@crustjs/core": "0.0.16",
