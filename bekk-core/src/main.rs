@@ -281,7 +281,7 @@ fn main() {
         Ok(v) => println!("{v}"),
         Err(e) => {
             let output = json!({ "status": "error", "message": e.to_string() });
-            eprintln!("{output}");
+            println!("{output}");
             std::process::exit(1);
         }
     }

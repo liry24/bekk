@@ -242,7 +242,7 @@ export const initCmd = app
         }
 
         console.log()
-        console.log(dim('  Add backup sources:') + '  bekk config add <path>')
+        console.log(dim('  Add backup sources:') + '  bekk config')
         console.log(dim('  Run backup:        ') + '  bekk backup')
         if (!gistEnabled) {
             console.log(dim('  Set up Gist sync:  ') + '  bekk gist login')

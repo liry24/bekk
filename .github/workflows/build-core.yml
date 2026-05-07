@@ -1,10 +1,6 @@
-name: Build bekk-core
+name: 'Build: bekk-core Binaries'
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_call:
     outputs:
       artifact-name:
@@ -30,7 +26,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: bekk-core-linux-x64
           - name: macOS x64
-            os: macos-13
+            os: macos-latest
             target: x86_64-apple-darwin
             bin: bekk-core-macos-x64
           - name: macOS ARM64

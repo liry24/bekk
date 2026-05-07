@@ -34,9 +34,7 @@ export const backupCmd = app
                 process.exit(1)
             }
             if (cfg.sourcePaths.length === 0) {
-                consola.error(
-                    'No source paths configured. Use `bekk config add <path>` to add one.',
-                )
+                consola.error('No source paths configured. Run `bekk config` to add source paths.')
                 process.exit(1)
             }
 
