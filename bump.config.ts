@@ -2,9 +2,9 @@ import { defineConfig } from 'bumpp'
 
 export default defineConfig({
     release: 'prompt',
-    tag: true,
+    tag: false,
     commit: true,
-    push: false,
+    push: true,
     all: true,
     execute: 'bun run bump:hook',
     files: ['package.json', 'bekk-core/Cargo.toml'],
