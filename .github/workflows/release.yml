@@ -59,7 +59,6 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -166,6 +165,7 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -182,7 +182,9 @@ jobs:
           path: dist/
 
       - name: Publish to npm
-        run: bun run package && bun run publish --access public
+        run: bun run publish
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   update-scoop:
     name: Update Scoop bucket
