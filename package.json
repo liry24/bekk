@@ -1,6 +1,6 @@
 {
     "name": "bekk",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "description": "Backup CLI for Windows",
     "homepage": "https://github.com/liry24/bekk#readme",
     "bugs": {
@@ -51,7 +51,7 @@
         "@crustjs/style": "0.1.0",
         "@crustjs/validate": "0.0.15",
         "@types/bun": "1.3.13",
-        "bumpp": "^11.0.1",
+        "bumpp": "10.4.1",
         "consola": "^3.4.2",
         "destr": "^2.0.5",
         "ofetch": "^1.5.1",
