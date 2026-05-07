@@ -4,9 +4,11 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   check:
@@ -66,44 +68,41 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build npm packages (all platforms)
+        run: bun run package
+
       - name: Download bekk-core Windows binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-pc-windows-msvc
           path: dist/npm/windows-x64/bin/
 
       - name: Download bekk-core Linux binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-unknown-linux-gnu
           path: dist/npm/linux-x64/bin/
 
       - name: Download bekk-core macOS x64 binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-x86_64-apple-darwin
           path: dist/npm/darwin-x64/bin/
 
       - name: Download bekk-core macOS ARM64 binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: bekk-core-aarch64-apple-darwin
           path: dist/npm/darwin-arm64/bin/
 
-      - name: Make Unix binaries executable
-        run: |
-          chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
-          chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
-          chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
-
-      - name: Build npm packages (all platforms)
-        run: bun run package
-
       - name: Make bekk Unix binaries executable
         run: |
           chmod +x dist/npm/linux-x64/bin/bekk-bun-linux-x64-baseline || true
-          chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline || true
-          chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-bun-darwin-x64 || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64 || true
+          chmod +x dist/npm/linux-x64/bin/bekk-core-linux-x64 || true
+          chmod +x dist/npm/darwin-x64/bin/bekk-core-macos-x64 || true
+          chmod +x dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 || true
 
       - name: Create release zip archives
         run: |
@@ -122,13 +121,13 @@ jobs:
           rm /tmp/bekk /tmp/bekk-core
 
           # macOS x64
-          cp dist/npm/darwin-x64/bin/bekk-bun-darwin-x64-baseline /tmp/bekk
+          cp dist/npm/darwin-x64/bin/bekk-bun-darwin-x64 /tmp/bekk
           cp dist/npm/darwin-x64/bin/bekk-core-macos-x64 /tmp/bekk-core
           cd /tmp && zip $OLDPWD/release/bekk-macos-x64.zip bekk bekk-core && cd $OLDPWD
           rm /tmp/bekk /tmp/bekk-core
 
           # macOS ARM64
-          cp dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64-baseline /tmp/bekk
+          cp dist/npm/darwin-arm64/bin/bekk-bun-darwin-arm64 /tmp/bekk
           cp dist/npm/darwin-arm64/bin/bekk-core-macos-arm64 /tmp/bekk-core
           cd /tmp && zip $OLDPWD/release/bekk-macos-arm64.zip bekk bekk-core && cd $OLDPWD
           rm /tmp/bekk /tmp/bekk-core
@@ -146,7 +145,7 @@ jobs:
           generate_release_notes: true
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -166,6 +165,7 @@ jobs:
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -176,13 +176,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download dist artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
 
       - name: Publish to npm
-        run: bun run publish
+        run: bun publish
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -221,7 +221,6 @@ jobs:
                 "64bit": {
                   url: $url,
                   hash: $hash,
-                  extract_dir: ".",
                   bin: [["bekk.exe", "bekk"]],
                   shortcuts: [["bekk.exe", "bekk"]]
                 }
