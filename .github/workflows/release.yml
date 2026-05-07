@@ -218,7 +218,6 @@ jobs:
                 "64bit": {
                   url: $url,
                   hash: $hash,
-                  extract_dir: ".",
                   bin: [["bekk.exe", "bekk"]],
                   shortcuts: [["bekk.exe", "bekk"]]
                 }
