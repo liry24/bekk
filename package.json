@@ -1,5 +1,5 @@
 {
-    "name": "@liry24/bekk",
+    "name": "bekk",
     "version": "0.2.16",
     "description": "Backup CLI for Windows",
     "homepage": "https://github.com/liry24/bekk#readme",
