@@ -11,6 +11,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-core:
+    name: Check bekk-core (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bekk-core
+
+      - name: Check bekk-core
+        working-directory: bekk-core
+        run: cargo check
+
   check:
     name: Lint, Format & Type Check
     runs-on: ubuntu-latest
