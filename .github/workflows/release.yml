@@ -182,7 +182,7 @@ jobs:
           path: dist/
 
       - name: Publish to npm
-        run: bun publish --access public
+        run: bun run publish
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
 
