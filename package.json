@@ -1,6 +1,6 @@
 {
-    "name": "bekk",
-    "version": "0.2.13",
+    "name": "@bekk/bekk",
+    "version": "0.2.14",
     "description": "Backup CLI for Windows",
     "homepage": "https://github.com/liry24/bekk#readme",
     "bugs": {
