@@ -2,8 +2,8 @@ import { defineConfig } from 'bumpp'
 
 export default defineConfig({
     release: 'prompt',
-    commit: true,
     tag: true,
-    push: true,
-    files: ['package.json', 'bekk-core/Cargo.toml', 'bekk-core/Cargo.lock'],
+    commit: false,
+    push: false,
+    files: ['package.json', 'bekk-core/Cargo.toml'],
 })
