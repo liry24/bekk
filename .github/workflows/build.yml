@@ -1,8 +1,6 @@
 name: 'CI: Lint, Format & Type Check'
 
 on:
-  push:
-    branches: [dev]
   pull_request:
     branches: [main]
 
