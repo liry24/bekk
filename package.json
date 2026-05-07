@@ -29,7 +29,7 @@
         "dev": "bun run src/cli.ts",
         "build": "crust build",
         "package": "crust build --package",
-        "publish": "crust publish --stage-dir dist/npm",
+        "publish": "crust publish --stage-dir dist/npm --dry-run",
         "prepack": "bun run build",
         "build:core": "cargo build --manifest-path bekk-core/Cargo.toml",
         "build:core:release": "cargo build --release --manifest-path bekk-core/Cargo.toml",
