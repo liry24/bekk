@@ -99,6 +99,7 @@ export interface InitConfigPayload {
     packSizeMib: number
     chunkSizeMib: number
     savedPassword: string
+    providerConfigsJson: string
 }
 
 export interface InitializeRepositoryOpts {
@@ -126,6 +127,7 @@ const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     packSizeMib: 32,
     chunkSizeMib: 1,
     savedPassword: '',
+    providerConfigsJson: '{}',
 })
 
 export const bekkCore = {

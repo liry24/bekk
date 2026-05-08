@@ -46,6 +46,11 @@ export const configStore = createStore({
             default: '[]',
             validate: fieldSync(z.string()),
         },
+        providerConfigsJson: {
+            type: 'string',
+            default: '{}',
+            validate: fieldSync(z.string()),
+        },
         compression: {
             type: 'number',
             default: 1,

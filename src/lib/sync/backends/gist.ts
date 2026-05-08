@@ -38,10 +38,13 @@ export const createGistBackend = (token: string): SyncBackend => {
                 [fileName]: { content: JSON.stringify(data.config, null, 2) },
             }
 
-            if (data.appLists['scoop'] !== null) {
-                files['scoop.json'] = { content: JSON.stringify(data.appLists['scoop'], null, 2) }
+            for (const [providerId, apps] of Object.entries(data.appLists)) {
+                if (apps !== null) {
+                    files[`apps_${providerId}.json`] = {
+                        content: JSON.stringify(apps, null, 2),
+                    }
+                }
             }
-            files['winget.json'] = { content: JSON.stringify(data.appLists['winget'], null, 2) }
 
             const gist = await api<GistResponse>(cfg.gistId ? `/gists/${cfg.gistId}` : '/gists', {
                 method: cfg.gistId ? 'PATCH' : 'POST',
@@ -89,29 +92,20 @@ export const createGistBackend = (token: string): SyncBackend => {
             const parsedConfig = destr<Record<string, unknown>>(configContent)
 
             // Read app lists from Gist if present
-            let scoop: import('#lib/types').SyncData['appLists']['scoop'] = null
-            let winget: import('#lib/types').SyncData['appLists']['winget'] = []
+            const appLists: Record<string, import('#lib/types').App[] | null> = {}
 
-            const scoopFile = gist.files['scoop.json']
-            if (scoopFile) {
-                const content =
-                    scoopFile.content ??
-                    (await ofetch<string>(scoopFile.raw_url, {
-                        parseResponse: (txt) => txt,
-                        headers: { Authorization: `token ${token}` },
-                    }))
-                scoop = destr(content) ?? null
-            }
-
-            const wingetFile = gist.files['winget.json']
-            if (wingetFile) {
-                const content =
-                    wingetFile.content ??
-                    (await ofetch<string>(wingetFile.raw_url, {
-                        parseResponse: (txt) => txt,
-                        headers: { Authorization: `token ${token}` },
-                    }))
-                winget = destr(content) ?? []
+            for (const [filename, file] of Object.entries(gist.files)) {
+                const match = filename.match(/^apps_(.+)\.json$/)
+                if (match && file) {
+                    const providerId = match[1]!
+                    const content =
+                        file.content ??
+                        (await ofetch<string>(file.raw_url, {
+                            parseResponse: (txt) => txt,
+                            headers: { Authorization: `token ${token}` },
+                        }))
+                    appLists[providerId] = destr(content) ?? null
+                }
             }
 
             return {
@@ -162,8 +156,12 @@ export const createGistBackend = (token: string): SyncBackend => {
                         typeof parsedConfig['savedPassword'] === 'string'
                             ? parsedConfig['savedPassword']
                             : '',
+                    providerConfigsJson:
+                        typeof parsedConfig['providerConfigsJson'] === 'string'
+                            ? parsedConfig['providerConfigsJson']
+                            : '{}',
                 },
-                appLists: { scoop, winget },
+                appLists,
             }
         },
     }

@@ -1,7 +1,21 @@
+import { destr } from 'destr'
+
 import type { App, PackageProvider } from '#lib/types'
 
 import { configStore } from '../../../store'
 import { listWinget } from '../legacy'
+
+const defaultSources = ['winget', 'msstore']
+
+const getWingetSources = async () => {
+    const cfg = await configStore.read()
+    const parsed = destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)
+    const wingetCfg = parsed['winget']
+    if (wingetCfg && Array.isArray(wingetCfg['includeSources'])) {
+        return wingetCfg['includeSources'] as string[]
+    }
+    return defaultSources
+}
 
 export const wingetProvider: PackageProvider = {
     id: 'winget',
@@ -24,8 +38,7 @@ export const wingetProvider: PackageProvider = {
     },
 
     list: async () => {
-        const cfg = await configStore.read()
-        const raw = listWinget(cfg.wingetIncludeSources)
+        const raw = listWinget(await getWingetSources())
         return raw.map(
             (r) =>
                 ({
