@@ -30,9 +30,6 @@ export const generatePassword = (length = 32) => {
     return result.join('')
 }
 
-export const getRepoPassword = async () =>
-    Bun.secrets.get({ service: SERVICE, name: REPO_PASSWORD_KEY })
-
 /**
  * Resolve the repo password from the OS credential manager or the config file.
  * If both exist but differ, prompts the user to choose which one to use.
