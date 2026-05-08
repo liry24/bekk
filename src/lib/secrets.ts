@@ -37,6 +37,21 @@ export const setRepoPassword = async (value: string) => {
     await Bun.secrets.set({ service: SERVICE, name: REPO_PASSWORD_KEY, value })
 }
 
+/**
+ * Re-key the rustic repository with a new password, then update the OS credential manager.
+ * Throws if the repository re-keying fails (credential store is left unchanged).
+ */
+export const changeRepoPassword = async (
+    repo: string,
+    oldPassword: string,
+    newPassword: string,
+) => {
+    const { bekkCore } = await import('./bekk-core')
+    const result = await bekkCore.changePassword(repo, oldPassword, newPassword)
+    if (result.status === 'error') throw new Error(result.message)
+    await setRepoPassword(newPassword)
+}
+
 export const deleteRepoPassword = async () =>
     Bun.secrets.delete({ service: SERVICE, name: REPO_PASSWORD_KEY })
 

@@ -1,4 +1,12 @@
-import { CancelledError, confirm, input, multiselect, password, select } from '@crustjs/prompts'
+import {
+    CancelledError,
+    confirm,
+    input,
+    multiselect,
+    password,
+    select,
+    spinner,
+} from '@crustjs/prompts'
 import { configDir } from '@crustjs/store'
 import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
@@ -7,7 +15,7 @@ import open from 'open'
 import { app } from '../app'
 import { bekkCore } from '../lib/bekk-core'
 import { normalizePath } from '../lib/pathUtils'
-import { generatePassword, setRepoPassword } from '../lib/secrets'
+import { changeRepoPassword, generatePassword, resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 // ─── config show ──────────────────────────────────────────────────────────────
@@ -69,6 +77,17 @@ const openCmd = app
 const changePassword = async () => {
     const cfg = await configStore.read()
 
+    if (!cfg.repoPath) {
+        consola.error('No backup destination configured. Run `bekk config` first.')
+        return
+    }
+
+    const oldPassword = await resolveRepoPassword()
+    if (!oldPassword) {
+        consola.error('Could not resolve current repository password.')
+        return
+    }
+
     const entered = await password({
         message: 'New backup password  (press Enter to auto-generate)',
     })
@@ -94,7 +113,21 @@ const changePassword = async () => {
         inactive: 'No  (OS credential manager only — recommended)',
     })
 
-    await setRepoPassword(newPassword)
+    await spinner({
+        message: 'Updating repository encryption key…',
+        task: async ({ updateMessage }) => {
+            try {
+                await changeRepoPassword(cfg.repoPath!, oldPassword, newPassword)
+                updateMessage(green('Repository encryption key updated.'))
+            } catch (err) {
+                throw new Error(
+                    'Failed to re-key repository: ' +
+                        (err instanceof Error ? err.message : String(err)),
+                )
+            }
+        },
+    })
+
     await configStore.patch({ savedPassword: saveInConfig ? newPassword : '' })
 
     if (wasGenerated) {
