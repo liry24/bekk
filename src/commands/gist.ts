@@ -2,8 +2,10 @@ import { confirm } from '@crustjs/prompts'
 import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import { createConsola } from 'consola'
 
+import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { cliLog } from '#lib/log'
+
 import { app } from '../app'
-import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '../lib/github'
 import { authStore, configStore } from '../store'
 
 const logger = createConsola({ formatOptions: { date: false } })
@@ -57,7 +59,7 @@ const logoutCmd = app
         const label = username ? bold(cyan(username)) : 'unknown'
 
         logger.log(`Currently signed in as ${label}.`)
-        console.log()
+        cliLog({ padding: { side: 'top' } })
 
         const ok = await confirm({
             message: yellow(`Sign out of ${label}?`),

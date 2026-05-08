@@ -1,11 +1,25 @@
-import { CancelledError, confirm, input, multiselect, password, select } from '@crustjs/prompts'
+import {
+    CancelledError,
+    confirm,
+    input,
+    multiselect,
+    password,
+    select,
+    spinner,
+} from '@crustjs/prompts'
+import { configDir } from '@crustjs/store'
 import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
+import { destr } from 'destr'
+import open from 'open'
+import { normalize } from 'pathe'
+
+import { bekkCore } from '#bekk-core'
+import { getAvailableProviders } from '#lib/apps'
+import { cliLog } from '#lib/log'
+import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
-import { normalizePath } from '../lib/pathUtils'
-import { generatePassword, setRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 // ─── config show ──────────────────────────────────────────────────────────────
@@ -24,11 +38,21 @@ const showCmd = app
         if (cfg.sourcePaths.length !== 0) for (const p of cfg.sourcePaths) console.log('  ' + p)
         console.log()
 
-        const srcLabel =
-            cfg.wingetIncludeSources.length > 0
-                ? cfg.wingetIncludeSources.map((s) => (s === '' ? dim('(blank)') : s)).join(', ')
-                : dim('(none — winget apps will not be backed up)')
-        console.log(bold('App List Backup (winget sources):'), srcLabel)
+        const providers = getAvailableProviders()
+        if (providers.length > 0) {
+            const parsed = destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)
+            const wingetSources = parsed['winget']?.['includeSources'] as string[] | undefined
+            const srcLabel =
+                wingetSources && wingetSources.length > 0
+                    ? wingetSources.map((s) => (s === '' ? dim('(blank)') : s)).join(', ')
+                    : dim('(none — winget apps will not be backed up)')
+            console.log(bold('App List Backup (winget sources):'), srcLabel)
+        } else {
+            console.log(
+                bold('App List Backup:'),
+                dim('no package managers available for this platform yet'),
+            )
+        }
         console.log()
 
         console.log(bold('Compression:'), cfg.compression === 0 ? 'None' : String(cfg.compression))
@@ -46,10 +70,37 @@ const showCmd = app
         console.log(bold('GitHub Gist ID:'), cfg.gistId || dim('(not set)'))
     })
 
+// ─── config open ─────────────────────────────────────────────────────────────
+
+const openCmd = app
+    .sub('config')
+    .sub('open')
+    .meta({ description: 'Open config file directory in file explorer' })
+    .run(async () => {
+        try {
+            const dir = configDir('bekk')
+            console.log(green('Opening config directory:'), dim(dir))
+            await open(dir, { wait: true })
+        } catch {
+            consola.error('An error occurred while trying to open the config directory.')
+        }
+    })
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const changePassword = async () => {
-    const cfg = await configStore.read()
+    const { repoPath, savedPassword } = await configStore.read()
+
+    if (!repoPath) {
+        consola.error('No backup destination configured. Run `bekk config` first.')
+        return
+    }
+
+    const oldPassword = await resolveRepoPassword()
+    if (!oldPassword) {
+        consola.error('Could not resolve current repository password.')
+        return
+    }
 
     const entered = await password({
         message: 'New backup password  (press Enter to auto-generate)',
@@ -71,19 +122,40 @@ const changePassword = async () => {
 
     const saveInConfig = await confirm({
         message: 'Save password to config file?',
-        default: cfg.savedPassword !== '',
+        default: savedPassword !== '',
         active: 'Yes  (⚠ synced to Gist/S3 as plaintext)',
         inactive: 'No  (OS credential manager only — recommended)',
     })
 
-    await setRepoPassword(newPassword)
-    await configStore.patch({ savedPassword: saveInConfig ? newPassword : '' })
+    await spinner({
+        message: 'Updating repository encryption key…',
+        task: async ({ updateMessage }) => {
+            try {
+                await changeRepoPassword({
+                    repo: repoPath!,
+                    oldPassword,
+                    newPassword,
+                    saveToConfig: saveInConfig,
+                })
+                updateMessage(green('Repository encryption key updated.'))
+            } catch (err) {
+                throw new Error(
+                    'Failed to re-key repository: ' +
+                        (err instanceof Error ? err.message : String(err)),
+                )
+            }
+        },
+    })
 
     if (wasGenerated) {
-        console.log()
-        console.log(yellow(bold('New auto-generated password:')))
-        console.log('  ' + bold(newPassword))
-        console.log(dim('  Keep this safe — it is required to restore your backups.'))
+        cliLog({
+            messages: [
+                yellow(bold('New auto-generated password:')),
+                '  ' + bold(newPassword),
+                dim('  Keep this safe — it is required to restore your backups.'),
+            ],
+            padding: { side: 'top' },
+        })
     }
     consola.success(green('Password updated.'))
 }
@@ -95,7 +167,7 @@ const configureDestination = async () => {
         default: cfg.repoPath || undefined,
         placeholder: '/path/to/repo or S3 URL',
     })
-    const path = normalizePath(raw.trim())
+    const path = normalize(raw.trim())
     await configStore.patch({ repoPath: path })
     consola.success(green(`Backup destination set: ${bold(path)}`))
 }
@@ -127,7 +199,7 @@ const configureSources = async () => {
             })
             const trimmed = raw.trim()
             if (!trimmed) break
-            const path = normalizePath(trimmed)
+            const path = normalize(trimmed)
             await configStore.update((c) => {
                 if (c.sourcePaths.includes(path)) return c
                 return { ...c, sourcePaths: [...c.sourcePaths, path] }
@@ -156,19 +228,53 @@ const configureSources = async () => {
 }
 
 const configureApps = async () => {
+    const providers = getAvailableProviders()
+    if (providers.length === 0) {
+        consola.info('App list — no package managers available for macOS/Linux yet.')
+        return
+    }
+
     const cfg = await configStore.read()
+    const parsed = destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)
+    const currentSources = (parsed['winget']?.['includeSources'] as string[] | undefined) ?? [
+        'winget',
+        'msstore',
+    ]
+
+    const predefined = ['winget', 'msstore', '', 'unknown']
+    const customSources = currentSources.filter((s) => !predefined.includes(s))
+
+    const choices = [
+        { label: 'winget', value: 'winget', hint: 'community repository' },
+        { label: 'msstore', value: 'msstore', hint: 'Microsoft Store' },
+        { label: '(blank)', value: '', hint: 'sideloaded / custom installers' },
+        { label: 'unknown', value: 'unknown', hint: 'packages without a known source' },
+        ...customSources.map((s) => ({ label: s, value: s, hint: 'custom source' })),
+        { label: '+ Add custom source', value: '__add_custom__', hint: 'type your own' },
+    ]
 
     const chosen = await multiselect<string>({
         message: 'Winget sources to include in app list backup (Space to toggle)',
-        choices: [
-            { label: 'winget', value: 'winget', hint: 'community repository' },
-            { label: 'msstore', value: 'msstore', hint: 'Microsoft Store' },
-            { label: '(blank)', value: '', hint: 'sideloaded / custom installers' },
-        ],
-        default: cfg.wingetIncludeSources,
+        choices,
+        default: currentSources,
     })
 
-    await configStore.patch({ wingetIncludeSources: chosen })
+    let finalSources = chosen.filter((v) => v !== '__add_custom__')
+
+    if (chosen.includes('__add_custom__')) {
+        const custom = await input({
+            message: 'Custom source name',
+            validate: (v) => (v.trim() ? true : 'Source name is required'),
+        })
+        const trimmed = custom.trim()
+        if (trimmed && !finalSources.includes(trimmed)) {
+            finalSources.push(trimmed)
+        }
+    }
+
+    await configStore.patch({
+        providerConfigsJson: JSON.stringify({ winget: { includeSources: finalSources } }),
+    })
     consola.success(green('App backup settings saved.'))
 }
 
@@ -179,13 +285,19 @@ const configureAdvanced = async () => {
     let action: AdvancedAction
 
     do {
+        const parsedProviders = destr<Record<string, Record<string, unknown>>>(
+            cfg.providerConfigsJson,
+        )
         action = await select<AdvancedAction>({
             message: 'Advanced settings',
             choices: [
                 {
                     label: 'App list (winget)',
                     value: 'apps',
-                    hint: cfg.wingetIncludeSources.join(', ') || 'none',
+                    hint:
+                        (
+                            parsedProviders['winget']?.['includeSources'] as string[] | undefined
+                        )?.join(', ') || 'none',
                 },
                 {
                     label: 'Compression',
@@ -284,6 +396,7 @@ export const configCmd = app
     .sub('config')
     .meta({ description: 'Manage configuration' })
     .command(showCmd)
+    .command(openCmd)
     .run(async () => {
         try {
             const cfg = await configStore.read()

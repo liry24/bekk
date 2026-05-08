@@ -12,7 +12,11 @@
         "strict": true,
         "skipLibCheck": true,
         "noFallthroughCasesInSwitch": true,
-        "noUncheckedIndexedAccess": true
+        "noUncheckedIndexedAccess": true,
+        "paths": {
+            "#bekk-core": ["./bekk-core/src"],
+            "#lib/*": ["./src/lib/*"]
+        }
     },
-    "include": ["src", "scripts"]
+    "include": ["src", "bekk-core/src"]
 }

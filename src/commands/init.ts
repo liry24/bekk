@@ -2,12 +2,14 @@ import { spinner } from '@crustjs/progress'
 import { confirm, input, multiselect, password, select } from '@crustjs/prompts'
 import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
+import { normalize } from 'pathe'
+
+import { bekkCore } from '#bekk-core'
+import { cliLog } from '#lib/log'
+import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '#lib/secrets'
+import type { S3Destination } from '#lib/types'
 
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
-import { normalizePath } from '../lib/pathUtils'
-import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '../lib/secrets'
-import type { S3Destination } from '../lib/sync'
 import { authStore, configStore } from '../store'
 
 export const initCmd = app
@@ -16,9 +18,20 @@ export const initCmd = app
     .run(async () => {
         const existing = await configStore.read()
         if (existing.repoPath) {
-            console.log(bold('Backup is already configured.'))
-            console.log(dim('Use `bekk config` to update the backup destination.'))
-            return
+            console.log(yellow(bold('Backup is already configured.')))
+            console.log(
+                dim('Running init again will walk through setup and reinitialize the repo.'),
+            )
+            console.log(dim(`Current repo: ${existing.repoPath}`))
+
+            const shouldReinitialize = await confirm({
+                message: 'Run init again and reinitialize the backup destination?',
+                default: false,
+                active: 'Yes  (run setup again)',
+                inactive: 'No  (cancel)',
+            })
+
+            if (!shouldReinitialize) return
         }
 
         // ── Step 1: Where to save backups ──────────────────────────────────────
@@ -64,11 +77,10 @@ export const initCmd = app
         let wasGenerated = false
 
         if (enteredPassword.trim()) {
-            const confirmed = await password({
+            await password({
                 message: 'Confirm backup password',
                 validate: (v) => (v === enteredPassword ? true : 'Passwords do not match'),
             })
-            void confirmed
             resolvedPassword = enteredPassword
         } else {
             resolvedPassword = generatePassword()
@@ -76,12 +88,14 @@ export const initCmd = app
         }
 
         // ── Step 2b: Save password to config? ────────────────────────────────────
-        console.log()
-        console.log(dim('Your password will be stored in the OS credential manager.'))
-        console.log(
-            dim('  ⚠  Saving to config makes it available for scripts, but the password will be'),
-        )
-        console.log(dim('     synced as plaintext to any enabled Gist or S3 backends.'))
+        cliLog({
+            messages: [
+                dim('Your password will be stored in the OS credential manager.'),
+                dim('⚠ Saving to config makes it available for scripts,'),
+                dim('but the password will be synced as plaintext to any enabled storage.'),
+            ],
+            padding: { side: 'top' },
+        })
         const savePasswordInConfig = await confirm({
             message: 'Also save password to config file?',
             default: false,
@@ -90,59 +104,71 @@ export const initCmd = app
         })
 
         // ── Step 3: Initialize ─────────────────────────────────────────────────
-        const normalizedRepo = normalizePath(repoPath)
+        const normalizedRepo = normalize(repoPath)
+        const sameConfiguredRepo = Boolean(
+            existing.repoPath && normalizedRepo === existing.repoPath,
+        )
+
+        if (sameConfiguredRepo) {
+            cliLog({
+                messages: [
+                    yellow(bold('Warning: the selected repo is already configured.')),
+                    dim(
+                        'Reinitializing the same repo directory will remove its current repository data.',
+                    ),
+                ],
+                padding: { side: 'bottom' },
+            })
+
+            const shouldReuseRepo = await confirm({
+                message: 'Continue and delete the current repo contents before reinitializing?',
+                default: false,
+                active: 'Yes  (delete and reinitialize)',
+                inactive: 'No  (cancel)',
+            })
+
+            if (!shouldReuseRepo) return
+        }
 
         let initOk = false
         await spinner({
             message: 'Setting up backup destination...',
             task: async () => {
-                // Write store first so perf fields get their defaults
-                await configStore.write({
-                    sourcePaths: [],
-                    repoPath: normalizedRepo,
-                    gistId: '',
-                    gistEnabled: false,
-                    s3DestinationsJson: '[]',
-                    wingetIncludeSources: ['winget', 'msstore'],
-                    cronSchedule: '',
-                    compression: 1,
-                    extraVerify: true,
-                    packSizeMib: 32,
-                    chunkSizeMib: 1,
-                    savedPassword: savePasswordInConfig ? resolvedPassword : '',
+                const initialized = await bekkCore.initializeRepository({
+                    repoPath,
+                    password: resolvedPassword,
+                    forceReinit: sameConfiguredRepo,
                 })
-                const cfg = await configStore.read()
-                const result = await bekkCore.init(normalizedRepo, resolvedPassword, {
-                    compression: cfg.compression,
-                    extraVerify: cfg.extraVerify,
-                    packSizeMib: cfg.packSizeMib,
-                    chunkSizeMib: cfg.chunkSizeMib,
-                })
-                if (result.status === 'error') throw new Error(result.message)
+                if (initialized.initResult.status === 'error')
+                    throw new Error(initialized.initResult.message)
+                await configStore.write(initialized.nextConfig)
+                await setRepoPassword(resolvedPassword, { saveToConfig: savePasswordInConfig })
                 initOk = true
             },
         })
-
         if (!initOk) return
-        await setRepoPassword(resolvedPassword)
 
         console.log()
         consola.success(green(bold('Backup setup complete')))
 
-        if (wasGenerated) {
-            console.log()
-            console.log(yellow(bold('  Auto-generated backup password:')))
-            console.log('  ' + bold(resolvedPassword))
-            console.log(dim('  This password is stored in your OS credential manager.'))
-            console.log(dim('  You can view it later with:  bekk password'))
-            console.log(dim('  ⚠  Keep a copy somewhere safe — it is required to restore backups.'))
-        }
+        if (wasGenerated)
+            cliLog({
+                messages: [
+                    [yellow(bold('Auto-generated backup password:')), cyan(bold(resolvedPassword))],
+                    dim('This password is stored in your OS credential manager.'),
+                    dim('⚠  Keep a copy somewhere safe — it is required to restore backups.'),
+                ],
+                padding: { side: 'top' },
+            })
 
         // ── Step 4: Sync backends ──────────────────────────────────────────────
-        console.log()
-        console.log(dim('You can optionally sync your config and app lists to Gist or S3.'))
-        console.log(dim('You can skip this and set it up later with `bekk gist login`.'))
-        console.log()
+        cliLog({
+            messages: [
+                dim('You can optionally sync your config and app lists to Gist or S3.'),
+                dim('You can skip this and set it up later with `bekk gist login`.'),
+            ],
+            padding: { side: 'both' },
+        })
 
         const backendChoices = await multiselect<'gist' | 's3'>({
             message: 'Enable sync backends (space to toggle, enter to confirm)',
@@ -171,8 +197,10 @@ export const initCmd = app
         if (backendChoices.includes('s3')) {
             let addMore = true
             while (addMore) {
-                console.log()
-                console.log(bold('  Add S3 destination'))
+                cliLog({
+                    messages: [bold('Add S3 destination')],
+                    padding: { side: 'top' },
+                })
 
                 const defaultName = 's3'
                 const name = await input({
@@ -222,7 +250,10 @@ export const initCmd = app
                 s3Destinations.push(dest)
                 await setS3SecretAccessKey(dest.name, secretAccessKey)
 
-                consola.success(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
+                cliLog({
+                    messages: [green(`S3 destination ${cyan(bold(dest.name))} configured.`)],
+                    type: 'success',
+                })
 
                 addMore = await select<boolean>({
                     message: 'Add another S3 destination?',
@@ -234,19 +265,20 @@ export const initCmd = app
             }
         }
 
-        if (gistEnabled || s3Destinations.length > 0) {
+        if (gistEnabled || s3Destinations.length > 0)
             await configStore.patch({
                 gistEnabled,
                 s3DestinationsJson: JSON.stringify(s3Destinations),
             })
-        }
 
-        console.log()
-        console.log(dim('  Add backup sources:') + '  bekk config')
-        console.log(dim('  Run backup:        ') + '  bekk backup')
-        if (!gistEnabled) {
-            console.log(dim('  Set up Gist sync:  ') + '  bekk gist login')
-        } else {
-            console.log(dim('  Push to sync:      ') + '  bekk push')
-        }
+        cliLog({
+            messages: [
+                [dim('Add backup sources:  '), bold('bekk config')],
+                [dim('Run backup:          '), bold('bekk backup')],
+                gistEnabled
+                    ? [dim('Push to sync:        '), bold('bekk push')]
+                    : [dim('Set up Gist sync:    '), bold('bekk gist login')],
+            ],
+            padding: { side: 'top' },
+        })
     })

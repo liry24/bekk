@@ -5,9 +5,11 @@ import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
+import { bekkCore } from '#bekk-core'
+import { cliLog } from '#lib/log'
+import { resolveRepoPassword } from '#lib/secrets'
+
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
-import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 export const restoreCmd = app
@@ -21,7 +23,7 @@ export const restoreCmd = app
         target: flag(z.string().optional().describe('Destination path for restored files'), {
             short: 't',
         }),
-        dryRun: flag(
+        'dry-run': flag(
             z.boolean().default(false).describe('Dry run — preview without writing files'),
             { short: 'd' },
         ),
@@ -31,16 +33,12 @@ export const restoreCmd = app
             const cfg = await configStore.read()
 
             if (!cfg.repoPath) {
-                consola.error('Backup destination is not configured. Run `bekk init` first.')
-                process.exit(1)
+                throw new Error('Backup destination is not configured. Run `bekk init` first.')
             }
 
             const password = await resolveRepoPassword()
             if (!password) {
-                consola.error(
-                    'Backup password is not stored. Run `bekk init` or set BEKK_REPO_PASSWORD.',
-                )
-                process.exit(1)
+                throw new Error('Backup password is not stored. Run `bekk config`.')
             }
 
             const target =
@@ -56,30 +54,40 @@ export const restoreCmd = app
 
             try {
                 await spinner({
-                    message: `Restoring ${label}${flags.dryRun ? dim(' [dry run]') : ''}`,
+                    message: `Restoring ${label}${flags['dry-run'] ? dim(' [dry run]') : ''}`,
                     task: async ({ updateMessage }) => {
                         const result = await bekkCore.restore(
                             cfg.repoPath,
                             password,
                             target,
                             flags.snapshot,
-                            flags.dryRun,
+                            flags['dry-run'],
                         )
                         if (result.status === 'error') throw new Error(result.message)
                         updateMessage(`Restore complete: ${label}`)
                     },
                 })
 
-                if (flags.dryRun) {
-                    consola.success(green('[dry run] Restore simulation complete.'))
+                if (flags['dry-run']) {
+                    cliLog({
+                        messages: green('[dry run] Restore simulation complete.'),
+                        type: 'success',
+                    })
                 } else {
-                    consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
+                    cliLog({
+                        messages: green(bold('Restore complete')) + `  → ${dim(target)}`,
+                        type: 'success',
+                    })
                 }
             } catch (err) {
-                consola.error(
-                    red('Restore failed: ') + (err instanceof Error ? err.message : String(err)),
-                )
-                process.exitCode = 1
+                const message = err instanceof Error ? err.message : String(err)
+                if (/No snapshots found/i.test(message)) {
+                    consola.error(red('Restore failed:'), 'No snapshots found in this repository.')
+                    consola.info(dim('Run `bekk backup` first, then retry `bekk restore`.'))
+                    return
+                }
+                consola.error(red('Restore failed: ') + message)
+                return
             }
         }),
     )

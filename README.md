@@ -59,10 +59,10 @@ Interactive setup. Sets the backup destination and creates a default config file
 
 Run a backup. Saves app lists (winget / scoop) and creates a new encrypted snapshot of all configured source paths in the repository.
 
-| Flag       | Short | Description                                                      |
-| ---------- | ----- | ---------------------------------------------------------------- |
-| `--dryRun` | `-d`  | Dry run — scan apps and preview snapshot changes without writing |
-| `--tag`    | `-t`  | Tag to attach to the snapshot                                    |
+| Flag        | Short | Description                                                      |
+| ----------- | ----- | ---------------------------------------------------------------- |
+| `--dry-run` | `-d`  | Dry run — scan apps and preview snapshot changes without writing |
+| `--tag`     | `-t`  | Tag to attach to the snapshot                                    |
 
 ---
 
@@ -74,7 +74,7 @@ Restore files from a snapshot. If `--target` is omitted, you will be prompted to
 | ------------ | ----- | ------------------------------------------ |
 | `--snapshot` | `-s`  | Snapshot ID to restore (default: `latest`) |
 | `--target`   | `-t`  | Destination path to restore files into     |
-| `--dryRun`   | `-d`  | Dry run — preview what would be restored   |
+| `--dry-run`  | `-d`  | Dry run — preview what would be restored   |
 
 See available snapshots with `bekk snapshots`.
 

@@ -1,7 +1,7 @@
 /**
  * Check whether the current process is running with elevated privileges.
- *   Windows → Administrator (via `net session`)
- *   macOS/Linux → root (uid === 0)
+ *   Windows -> Administrator (via `net session`)
+ *   macOS/Linux -> root (uid === 0)
  */
 export const isAdmin = () => {
     if (process.platform === 'win32')

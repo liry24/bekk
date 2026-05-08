@@ -7,9 +7,10 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { getEnabledBackends } from '#lib/sync'
+import type { SyncData } from '#lib/types'
+
 import { app } from '../app'
-import { getEnabledBackends } from '../lib/sync'
-import type { SyncData } from '../lib/sync'
 import { configStore } from '../store'
 
 export const pullCmd = app
@@ -63,16 +64,38 @@ export const pullCmd = app
                 return
             }
 
-            let syncData!: SyncData
+            let syncData: SyncData | undefined
 
             try {
                 await spinner({
                     message: `Pulling from ${backend.label}...`,
                     task: async ({ updateMessage }) => {
                         syncData = await backend!.pull(flags.from)
-                        updateMessage(`Pulled from ${backend!.label}`)
+                        updateMessage(
+                            green(bold(`Config and app lists loaded from ${backend.label}.`)),
+                        )
                     },
                 })
+
+                if (!syncData) {
+                    consola.error(`Pull from ${backend.label} failed: no data received`)
+                    process.exitCode = 1
+                    return
+                }
+
+                // Write config locally
+                await configStore.write(syncData.config)
+
+                // Write app lists locally
+                const appListsDir = join(dataDir('bekk'), 'app-lists')
+                for (const [providerId, apps] of Object.entries(syncData.appLists)) {
+                    if (apps !== null) {
+                        await Bun.write(
+                            join(appListsDir, `${providerId}.json`),
+                            JSON.stringify(apps, null, 2),
+                        )
+                    }
+                }
             } catch (err) {
                 consola.error(
                     red(`Pull from ${backend.label} failed: `) +
@@ -82,23 +105,6 @@ export const pullCmd = app
                 return
             }
 
-            // Write config locally
-            await configStore.write(syncData.config)
-
-            // Write app lists locally
-            const appListsDir = join(dataDir('bekk'), 'app-lists')
-            if (syncData.appLists.scoop !== null) {
-                await Bun.write(
-                    join(appListsDir, 'scoop.json'),
-                    JSON.stringify(syncData.appLists.scoop, null, 2),
-                )
-            }
-            await Bun.write(
-                join(appListsDir, 'winget.json'),
-                JSON.stringify(syncData.appLists.winget, null, 2),
-            )
-
-            consola.success(green(bold(`Config and app lists loaded from ${backend.label}.`)))
             consola.log(dim('  Run `bekk config show` to verify the loaded settings.'))
         }),
     )

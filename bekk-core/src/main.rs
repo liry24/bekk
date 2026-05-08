@@ -1,12 +1,13 @@
-use std::env;
+use std::{env, fs, io::ErrorKind};
 
 use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
 use clap::{Parser, Subcommand};
 use rustic_backend::BackendOptions;
+use rustic_core::repofile::KeyId;
 use rustic_core::{
-    BackupOptions, ConfigOptions, Credentials, KeyOptions, LocalDestination, LsOptions, PathList,
-    Repository, RepositoryOptions, RestoreOptions, SnapshotOptions,
+    BackupOptions, ConfigOptions, Credentials, KeyOptions, LocalDestination, LsOptions, OpenStatus,
+    PathList, Repository, RepositoryOptions, RestoreOptions, SnapshotOptions,
 };
 use serde_json::{Value, json};
 
@@ -17,6 +18,8 @@ use serde_json::{Value, json};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    #[arg(long, help = "Read repository password from stdin")]
+    password_stdin: bool,
 }
 
 #[derive(Subcommand)]
@@ -25,6 +28,11 @@ enum Commands {
     Init {
         #[arg(long, help = "Path to the repository")]
         repo: String,
+        #[arg(
+            long,
+            help = "Delete existing local repository contents before initializing"
+        )]
+        force_reinit: bool,
         #[arg(
             long,
             default_value_t = 1,
@@ -69,6 +77,11 @@ enum Commands {
         #[arg(long, help = "Path to the repository")]
         repo: String,
     },
+    /// Change the repository password (re-key)
+    ChangePassword {
+        #[arg(long, help = "Path to the repository")]
+        repo: String,
+    },
     /// Apply repository config options to an existing repository
     ApplyConfig {
         #[arg(long, help = "Path to the repository")]
@@ -90,14 +103,39 @@ enum Commands {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn read_password() -> Result<String> {
-    env::var("BEKK_REPO_PASSWORD")
-        .map_err(|_| anyhow!("BEKK_REPO_PASSWORD environment variable is not set"))
+fn read_password(stdin: bool, env_var: &str) -> Result<String> {
+    if stdin {
+        let mut password = String::new();
+        std::io::stdin().read_line(&mut password)?;
+        Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
+    } else {
+        env::var(env_var)
+            .map_err(|_| anyhow!("{env_var} environment variable is not set"))
+    }
 }
 
 fn make_backends(repo: &str) -> Result<rustic_core::RepositoryBackends> {
     let backends = BackendOptions::default().repository(repo).to_backends()?;
     Ok(backends)
+}
+
+fn open_repo(repo: &str, password: &str) -> Result<Repository<OpenStatus>> {
+    let backends = make_backends(repo)?;
+    let repo_opts = RepositoryOptions::default();
+    let credentials = Credentials::password(password);
+    Ok(Repository::new(&repo_opts, &backends)?.open(&credentials)?)
+}
+
+fn ok() -> Value {
+    json!({ "status": "ok" })
+}
+
+fn ok_data(data: Value) -> Value {
+    json!({ "status": "ok", "data": data })
+}
+
+fn err(msg: String) -> Value {
+    json!({ "status": "error", "message": msg })
 }
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -117,12 +155,18 @@ fn build_config_opts(
 
 fn cmd_init(
     repo: &str,
+    force_reinit: bool,
     compression: i32,
     no_extra_verify: bool,
     pack_size: u64,
     chunk_size: u64,
+    password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password()?;
+    if force_reinit {
+        reset_local_repo_for_reinit(repo)?;
+    }
+
+    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -131,7 +175,78 @@ fn cmd_init(
 
     Repository::new(&repo_opts, &backends)?.init(&credentials, &key_opts, &config_opts)?;
 
-    Ok(json!({ "status": "ok" }))
+    Ok(ok())
+}
+
+fn local_repo_path(repo: &str) -> Option<&str> {
+    if let Some(path) = repo.strip_prefix("local:") {
+        return Some(path);
+    }
+
+    if repo.contains(':') {
+        return None;
+    }
+
+    Some(repo)
+}
+
+fn is_windows_drive_root(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || (bytes.len() == 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'/' || bytes[2] == b'\\'))
+}
+
+fn reset_local_repo_for_reinit(repo: &str) -> Result<()> {
+    let path = local_repo_path(repo)
+        .ok_or_else(|| anyhow!("--force-reinit is only supported for local repository paths"))?;
+
+    if path.is_empty() || path == "/" || is_windows_drive_root(path) {
+        return Err(anyhow!("Refusing to delete a root repository path"));
+    }
+
+    match fs::metadata(path) {
+        Ok(meta) => {
+            if meta.is_dir() {
+                fs::remove_dir_all(path)?;
+            } else {
+                fs::remove_file(path)?;
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(err.into()),
+    }
+
+    fs::create_dir_all(path)?;
+    Ok(())
+}
+
+fn cmd_change_password(repo: &str, password_stdin: bool) -> Result<Value> {
+    let old_password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let new_password = read_password(password_stdin, "BEKK_NEW_PASSWORD")?;
+
+    if old_password == new_password {
+        return Err(anyhow!(
+            "New password must differ from the current password"
+        ));
+    }
+
+    let opened = open_repo(repo, &old_password)?;
+    let old_key_id: Option<KeyId> = opened.key_id().clone();
+    opened.add_key(&new_password, &KeyOptions::default())?;
+    if let Some(kid) = old_key_id {
+        // Re-open with new credentials to authenticate the delete
+        let reopened = open_repo(repo, &new_password)?;
+        // Guard: skip deletion if rustic resolved to the same key (should not happen
+        // after the early-return above, but defensive against edge cases)
+        if reopened.key_id().as_ref() != Some(&kid) {
+            reopened.delete_key(&kid)?;
+        }
+    }
+
+    Ok(ok())
 }
 
 fn cmd_apply_config(
@@ -140,28 +255,27 @@ fn cmd_apply_config(
     no_extra_verify: bool,
     pack_size: u64,
     chunk_size: u64,
+    password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password()?;
-    let backends = make_backends(repo)?;
-    let repo_opts = RepositoryOptions::default();
-    let credentials = Credentials::password(password);
+    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
     let config_opts = build_config_opts(compression, no_extra_verify, pack_size, chunk_size);
 
-    let mut repo = Repository::new(&repo_opts, &backends)?.open(&credentials)?;
+    let mut repo = open_repo(repo, &password)?;
     repo.apply_config(&config_opts)?;
 
-    Ok(json!({ "status": "ok" }))
+    Ok(ok())
 }
 
-fn cmd_backup(repo: &str, sources: &[String], dry_run: bool, tag: Option<&str>) -> Result<Value> {
-    let password = read_password()?;
-    let backends = make_backends(repo)?;
-    let repo_opts = RepositoryOptions::default();
-    let credentials = Credentials::password(password);
+fn cmd_backup(
+    repo: &str,
+    sources: &[String],
+    dry_run: bool,
+    tag: Option<&str>,
+    password_stdin: bool,
+) -> Result<Value> {
+    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
 
-    let repo = Repository::new(&repo_opts, &backends)?
-        .open(&credentials)?
-        .to_indexed_ids()?;
+    let repo = open_repo(repo, &password)?.to_indexed_ids()?;
 
     let mut snap_opts = SnapshotOptions::default();
     if let Some(t) = tag {
@@ -174,51 +288,43 @@ fn cmd_backup(repo: &str, sources: &[String], dry_run: bool, tag: Option<&str>) 
 
     let snap = repo.backup(&backup_opts, &source, snap)?;
 
-    Ok(json!({
-        "status": "ok",
-        "data": {
-            "snapshot_id": (*snap.id).to_hex().as_str().to_string(),
-            "time": snap.time.to_string(),
-            "paths": snap.paths.iter().collect::<Vec<_>>(),
-        }
-    }))
+    Ok(ok_data(json!({
+        "snapshot_id": (*snap.id).to_hex().as_str().to_string(),
+        "time": snap.time.to_string(),
+        "paths": snap.paths.iter().collect::<Vec<_>>(),
+    })))
 }
 
-fn cmd_restore(repo: &str, snapshot: &str, target: &str, dry_run: bool) -> Result<Value> {
-    let password = read_password()?;
-    let backends = make_backends(repo)?;
-    let repo_opts = RepositoryOptions::default();
-    let credentials = Credentials::password(password);
+fn cmd_restore(
+    repo: &str,
+    snapshot: &str,
+    target: &str,
+    dry_run: bool,
+    password_stdin: bool,
+) -> Result<Value> {
+    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
 
-    let repo = Repository::new(&repo_opts, &backends)?
-        .open(&credentials)?
-        .to_indexed()?;
+    let repo = open_repo(repo, &password)?.to_indexed()?;
 
     let node = repo.node_from_snapshot_path(snapshot, |_| true)?;
     let dest = LocalDestination::new(target, true, !node.is_dir())?;
     let ls_opts = LsOptions::default();
     let restore_opts = RestoreOptions::default();
 
-    let plan = {
-        let node_streamer = repo.ls(&node, &ls_opts)?;
-        repo.prepare_restore(&restore_opts, node_streamer, &dest, dry_run)?
-    };
+    let node_streamer = repo.ls(&node, &ls_opts)?;
+    let plan = repo.prepare_restore(&restore_opts, node_streamer.clone(), &dest, dry_run)?;
 
     if !dry_run {
-        let node_streamer = repo.ls(&node, &ls_opts)?;
         repo.restore(plan, &restore_opts, node_streamer, &dest)?;
     }
 
-    Ok(json!({ "status": "ok" }))
+    Ok(ok())
 }
 
-fn cmd_snapshots(repo: &str) -> Result<Value> {
-    let password = read_password()?;
-    let backends = make_backends(repo)?;
-    let repo_opts = RepositoryOptions::default();
-    let credentials = Credentials::password(password);
+fn cmd_snapshots(repo: &str, password_stdin: bool) -> Result<Value> {
+    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
 
-    let repo = Repository::new(&repo_opts, &backends)?.open(&credentials)?;
+    let repo = open_repo(repo, &password)?;
     let mut snaps = repo.get_all_snapshots()?;
     snaps.sort_by(|a, b| a.time.cmp(&b.time));
 
@@ -236,10 +342,7 @@ fn cmd_snapshots(repo: &str) -> Result<Value> {
         })
         .collect();
 
-    Ok(json!({
-        "status": "ok",
-        "data": snap_list
-    }))
+    Ok(ok_data(json!(snap_list)))
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -250,38 +353,54 @@ fn main() {
     let result = match cli.command {
         Commands::Init {
             repo,
+            force_reinit,
             compression,
             no_extra_verify,
             pack_size,
             chunk_size,
-        } => cmd_init(&repo, compression, no_extra_verify, pack_size, chunk_size),
+        } => cmd_init(
+            &repo,
+            force_reinit,
+            compression,
+            no_extra_verify,
+            pack_size,
+            chunk_size,
+            cli.password_stdin,
+        ),
         Commands::Backup {
             repo,
             sources,
             dry_run,
             tag,
-        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref()),
+        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref(), cli.password_stdin),
         Commands::Restore {
             repo,
             snapshot,
             target,
             dry_run,
-        } => cmd_restore(&repo, &snapshot, &target, dry_run),
-        Commands::Snapshots { repo } => cmd_snapshots(&repo),
+        } => cmd_restore(&repo, &snapshot, &target, dry_run, cli.password_stdin),
+        Commands::Snapshots { repo } => cmd_snapshots(&repo, cli.password_stdin),
+        Commands::ChangePassword { repo } => cmd_change_password(&repo, cli.password_stdin),
         Commands::ApplyConfig {
             repo,
             compression,
             no_extra_verify,
             pack_size,
             chunk_size,
-        } => cmd_apply_config(&repo, compression, no_extra_verify, pack_size, chunk_size),
+        } => cmd_apply_config(
+            &repo,
+            compression,
+            no_extra_verify,
+            pack_size,
+            chunk_size,
+            cli.password_stdin,
+        ),
     };
 
     match result {
         Ok(v) => println!("{v}"),
         Err(e) => {
-            let output = json!({ "status": "error", "message": e.to_string() });
-            println!("{output}");
+            println!("{}", err(e.to_string()));
             std::process::exit(1);
         }
     }

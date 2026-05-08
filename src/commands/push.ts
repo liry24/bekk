@@ -6,10 +6,11 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { backupAllApps } from '#lib/apps'
+import { getEnabledBackends } from '#lib/sync'
+import type { SyncData } from '#lib/types'
+
 import { app } from '../app'
-import { backupApps } from '../lib/apps'
-import { getEnabledBackends } from '../lib/sync'
-import type { SyncData } from '../lib/sync'
 import { configStore } from '../store'
 
 export const pushCmd = app
@@ -35,15 +36,15 @@ export const pushCmd = app
             await spinner({
                 message: 'Saving app lists...',
                 task: async ({ updateMessage }) => {
-                    const { scoop, winget } = await backupApps(
-                        appListsDir,
-                        cfg.wingetIncludeSources,
-                    )
-                    syncData = { config: cfg, appLists: { scoop, winget } }
+                    const result = await backupAllApps(appListsDir)
+                    syncData = { config: cfg, appLists: result }
                     const parts: string[] = []
-                    if (scoop !== null) parts.push(`Scoop: ${scoop.length} apps`)
-                    parts.push(`Winget: ${winget.length} apps`)
-                    updateMessage('App lists saved  —  ' + parts.join('  '))
+
+                    for (const [providerId, apps] of Object.entries(result)) {
+                        if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
+                    }
+
+                    updateMessage('App lists saved: ' + dim(parts.join(', ')))
                 },
             })
 

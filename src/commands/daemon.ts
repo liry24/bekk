@@ -5,10 +5,12 @@ import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { join } from 'pathe'
 
+import { bekkCore } from '#bekk-core'
+import { backupAllApps, formatAppListSummary } from '#lib/apps'
+import { cliLog } from '#lib/log'
+import { resolveRepoPassword } from '#lib/secrets'
+
 import { app } from '../app'
-import { backupApps } from '../lib/apps'
-import { bekkCore } from '../lib/bekk-core'
-import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 // Append a log entry to the daemon log file
@@ -36,11 +38,8 @@ const runBackupCycle = async (logPath: string) => {
 
     const appListsDir = join(dataDir('bekk'), 'app-lists')
     try {
-        const { scoop, winget } = await backupApps(appListsDir, cfg.wingetIncludeSources)
-        const parts: string[] = []
-        if (scoop !== null) parts.push(`scoop:${scoop.length}`)
-        parts.push(`winget:${winget.length}`)
-        await appendLog(logPath, 'INFO', `App lists saved (${parts.join(', ')})`)
+        const result = await backupAllApps(appListsDir)
+        await appendLog(logPath, 'INFO', `App lists saved (${formatAppListSummary(result)})`)
     } catch (err) {
         await appendLog(
             logPath,
@@ -72,25 +71,28 @@ export const daemonCmd = app
         const logPath = join(dataDir('bekk'), 'daemon.log')
 
         if (!cfg.cronSchedule) {
-            consola.error(
+            throw new Error(
                 'No cron schedule configured. Run ' + cyan('bekk schedule register') + ' first.',
             )
-            process.exit(1)
         }
 
         // Validate schedule using Bun.cron.parse
         const next = Bun.cron.parse(cfg.cronSchedule)
         if (next === null) {
-            consola.error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
-            process.exit(1)
+            throw new Error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
         }
 
-        console.log(green('✓ ' + bold('bekk daemon started')))
-        console.log(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
-        console.log(dim('  Next run:  ') + cyan(next.toLocaleString()))
-        console.log(dim('  Log file:  ') + dim(logPath))
-        console.log()
-        console.log(yellow('Press Ctrl+C to stop.'))
+        cliLog({
+            messages: [
+                green('✓ ' + bold('bekk daemon started')),
+                dim('  Schedule:  ') + cyan(cfg.cronSchedule),
+                dim('  Next run:  ') + cyan(next.toLocaleString()),
+                dim('  Log file:  ') + dim(logPath),
+                '',
+                yellow('Press Ctrl+C to stop.'),
+            ],
+            padding: { side: 'bottom' },
+        })
 
         await appendLog(logPath, 'INFO', `Daemon started — schedule: ${cfg.cronSchedule}`)
 

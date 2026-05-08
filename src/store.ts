@@ -24,13 +24,6 @@ export const configStore = createStore({
             default: '',
             validate: fieldSync(z.string()),
         },
-        wingetIncludeSources: {
-            type: 'string',
-            array: true,
-            // Include winget and msstore by default; exclude blank-source apps
-            default: ['winget', 'msstore'] as string[],
-            validate: fieldSync(z.array(z.string())),
-        },
         cronSchedule: {
             type: 'string',
             default: '',
@@ -44,6 +37,11 @@ export const configStore = createStore({
         s3DestinationsJson: {
             type: 'string',
             default: '[]',
+            validate: fieldSync(z.string()),
+        },
+        providerConfigsJson: {
+            type: 'string',
+            default: '{}',
             validate: fieldSync(z.string()),
         },
         compression: {
@@ -105,11 +103,7 @@ const updateNotifierInternalStore = createStore({
 export const updateNotifierCacheAdapter: UpdateNotifierCacheAdapter = {
     read: async () => {
         const s = await updateNotifierInternalStore.read()
-        return {
-            lastCheckedAt: s.lastCheckedAt,
-            latestVersion: s.latestVersion,
-            lastNotifiedVersion: s.lastNotifiedVersion,
-        }
+        return { ...s }
     },
     write: async (state) => {
         await updateNotifierInternalStore.write({

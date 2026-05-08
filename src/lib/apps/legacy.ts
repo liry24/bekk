@@ -1,22 +1,5 @@
-import { join } from 'pathe'
-
 // winget and scoop are invoked via powershell.exe which outputs UTF-8.
-// Do NOT use getOemEncoding() here — that is for native Win32 binaries like robocopy.
 const utf8 = new TextDecoder('utf-8')
-
-export interface ScoopApp {
-    name: string
-    version: string
-    source: string
-}
-
-export interface WingetApp {
-    name: string
-    id: string
-    version: string
-    available?: string
-    source: string
-}
 
 /**
  * Parse a fixed-width text table that uses a dashes-separator row to delimit
@@ -127,7 +110,13 @@ export const listWinget = (includeSources: string[]) => {
     const sepIdx = lines.findIndex((l) => /^[\s-]+$/.test(l) && /-{2,}/.test(l))
     if (sepIdx < 0) return []
 
-    const apps: WingetApp[] = []
+    const apps: {
+        name: string
+        id: string
+        version: string
+        available?: string
+        source: string
+    }[] = []
     for (const line of lines.slice(sepIdx + 1)) {
         if (!line.trim()) continue
         // Skip trailing summary lines like "15 packages found."
@@ -148,26 +137,7 @@ export const listWinget = (includeSources: string[]) => {
         if (!name || !id) continue
         if (!includeSources.includes(source)) continue
 
-        const app: WingetApp = { name, id, version, source }
-        if (available) app.available = available
-        apps.push(app)
+        apps.push({ name, id, version, source, ...(available ? { available } : {}) })
     }
     return apps
-}
-
-/**
- * Backs up installed app lists to `destinationRoot`:
- *   - `scoop.json`  — omitted if Scoop is not installed
- *   - `winget.json` — filtered by `wingetIncludeSources`
- */
-export const backupApps = async (destinationRoot: string, wingetIncludeSources: string[]) => {
-    const scoop = listScoop()
-    const winget = listWinget(wingetIncludeSources)
-
-    if (scoop !== null) {
-        await Bun.write(join(destinationRoot, 'scoop.json'), JSON.stringify(scoop, null, 2))
-    }
-    await Bun.write(join(destinationRoot, 'winget.json'), JSON.stringify(winget, null, 2))
-
-    return { scoop, winget }
 }

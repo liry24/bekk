@@ -1,13 +1,7 @@
-import { dataDir } from '@crustjs/store'
 import { blue, bold, cyan, dim, orderedList } from '@crustjs/style'
-import { destr } from 'destr'
 import { ofetch } from 'ofetch'
 import open from 'open'
-import { join } from 'pathe'
 import { renderANSI } from 'uqr'
-
-import { authStore, configStore } from '../store'
-import { getConfigFileName } from './hosthash'
 
 const GITHUB_API = 'https://api.github.com'
 const DEVICE_CODE_URL = 'https://github.com/login/device/code'
@@ -15,12 +9,6 @@ const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 
 // GitHub OAuth App Client ID (non-secret, safe to embed in binary)
 export const GITHUB_CLIENT_ID = 'Ov23ctwZ6oK5OrIX9Gch'
-
-// Base GitHub REST API client (no auth)
-const ghFetch = ofetch.create({
-    baseURL: GITHUB_API,
-    headers: { Accept: 'application/vnd.github.v3+json' },
-})
 
 // Authenticated GitHub REST API client
 const authedGhFetch = (token: string) =>
@@ -37,12 +25,6 @@ export const resolveGistId = (input: string) => {
     if (urlMatch) return urlMatch[1]!
     if (/^[a-f0-9]{20,}$/.test(input.trim())) return input.trim()
     return null
-}
-
-export const ensureToken = async () => {
-    const { token } = await authStore.read()
-    if (!token) throw new Error('Not authenticated. Please run `bekk gist login` first.')
-    return token
 }
 
 export const getAuthenticatedUser = async (token: string): Promise<string | null> => {
@@ -124,90 +106,4 @@ export const runDeviceFlow = async (clientId: string) => {
             // network error: retry silently
         }
     }
-}
-
-interface GistResponse {
-    id: string
-    html_url: string
-    files: Record<string, { raw_url: string }>
-}
-
-export const pushGist = async (token: string) => {
-    const cfg = await configStore.read()
-    const fileName = await getConfigFileName()
-    const api = authedGhFetch(token)
-
-    const files: Record<string, { content: string }> = {
-        [fileName]: { content: JSON.stringify(cfg, null, 2) },
-    }
-
-    // Include app lists from bekk data dir if they exist
-    const appListsDir = join(dataDir('bekk'), 'app-lists')
-    for (const name of ['scoop.json', 'winget.json'] as const) {
-        const f = Bun.file(join(appListsDir, name))
-        if (await f.exists()) {
-            files[name] = { content: await f.text() }
-        }
-    }
-
-    const gist = await api<GistResponse>(cfg.gistId ? `/gists/${cfg.gistId}` : '/gists', {
-        method: cfg.gistId ? 'PATCH' : 'POST',
-        body: {
-            description: 'Bekk Config Data',
-            public: false,
-            files,
-        },
-    })
-
-    await configStore.patch({ gistId: gist.id })
-    return gist.html_url
-}
-
-export const pullGist = async (gistIdOrUrl: string, token?: string) => {
-    const gistId = resolveGistId(gistIdOrUrl)
-    if (!gistId) throw new Error(`Invalid Gist ID or URL: ${gistIdOrUrl}`)
-
-    const api = token ? authedGhFetch(token) : ghFetch
-
-    const gist = await api<{ files: Record<string, { content?: string; raw_url: string }> }>(
-        `/gists/${gistId}`,
-    )
-
-    const jsonFiles = Object.entries(gist.files).filter(([name]) => name.endsWith('.json'))
-    if (jsonFiles.length === 0) throw new Error(`No JSON file found in Gist: ${gistId}`)
-
-    const preferredName = await getConfigFileName()
-    const [selectedName, selectedFile] =
-        jsonFiles.find(([name]) => name === preferredName) ?? jsonFiles[0]!
-
-    // Fetch raw content if not embedded (large files are truncated by GitHub)
-    const content =
-        selectedFile.content ??
-        (await ofetch<string>(selectedFile.raw_url, {
-            parseResponse: (txt) => txt,
-            headers: token ? { Authorization: `token ${token}` } : undefined,
-            responseType: 'json',
-        }))
-
-    const parsed = destr<Record<string, unknown>>(content)
-
-    await configStore.write({
-        sourcePaths: Array.isArray(parsed.sourcePaths) ? (parsed.sourcePaths as string[]) : [],
-        repoPath: typeof parsed.repoPath === 'string' ? parsed.repoPath : '',
-        gistId: typeof parsed.gistId === 'string' ? parsed.gistId : gistId,
-        gistEnabled: typeof parsed.gistEnabled === 'boolean' ? parsed.gistEnabled : false,
-        s3DestinationsJson:
-            typeof parsed.s3DestinationsJson === 'string' ? parsed.s3DestinationsJson : '[]',
-        wingetIncludeSources: Array.isArray(parsed.wingetIncludeSources)
-            ? (parsed.wingetIncludeSources as string[])
-            : ['winget', 'msstore'],
-        cronSchedule: typeof parsed.cronSchedule === 'string' ? parsed.cronSchedule : '',
-        compression: typeof parsed.compression === 'number' ? parsed.compression : 1,
-        extraVerify: typeof parsed.extraVerify === 'boolean' ? parsed.extraVerify : true,
-        packSizeMib: typeof parsed.packSizeMib === 'number' ? parsed.packSizeMib : 32,
-        chunkSizeMib: typeof parsed.chunkSizeMib === 'number' ? parsed.chunkSizeMib : 1,
-        savedPassword: typeof parsed.savedPassword === 'string' ? parsed.savedPassword : '',
-    })
-
-    console.log(`Config loaded from ${selectedName}`)
 }

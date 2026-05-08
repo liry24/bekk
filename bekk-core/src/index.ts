@@ -1,6 +1,4 @@
-import { join, dirname } from 'pathe'
-
-import { toRepoArg } from './pathUtils'
+import { join, dirname, normalize } from 'pathe'
 
 const bekkCoreBin = () => {
     const ext = process.platform === 'win32' ? '.exe' : ''
@@ -18,6 +16,8 @@ const bekkCoreBin = () => {
 
     return bundledPath
 }
+
+const toRepoArg = (p: string) => (/^[A-Za-z]:/.test(p) ? `local:${p}` : p)
 
 // ─── Response types ───────────────────────────────────────────────────────────
 
@@ -43,13 +43,23 @@ export interface SnapshotEntry {
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
 
-const runBekkCore = async (args: string[], env: Record<string, string> = {}) => {
+const runBekkCore = async (
+    args: string[],
+    password?: string,
+    newPassword?: string,
+): Promise<CoreResult> => {
     const bin = bekkCoreBin()
-    const proc = Bun.spawn([bin, ...args], {
+    const hasStdinPassword = password !== undefined
+    const proc = Bun.spawn([bin, ...(hasStdinPassword ? ['--password-stdin'] : []), ...args], {
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...Bun.env, ...env } as Record<string, string>,
+        stdin: hasStdinPassword ? 'pipe' : 'inherit',
     })
+    if (hasStdinPassword && proc.stdin) {
+        proc.stdin.write(password + '\n')
+        if (newPassword) proc.stdin.write(newPassword + '\n')
+        proc.stdin.end()
+    }
     await proc.exited
     const stdout = await new Response(proc.stdout).text()
     if (!stdout.trim()) {
@@ -72,9 +82,61 @@ export interface PerfOpts {
     chunkSizeMib?: number
 }
 
+export interface InitOpts extends PerfOpts {
+    forceReinit?: boolean
+}
+
+export interface InitConfigPayload {
+    sourcePaths: string[]
+    repoPath: string
+    gistId: string
+    gistEnabled: boolean
+    s3DestinationsJson: string
+    cronSchedule: string
+    compression: number
+    extraVerify: boolean
+    packSizeMib: number
+    chunkSizeMib: number
+    savedPassword: string
+    providerConfigsJson: string
+}
+
+export interface InitializeRepositoryOpts {
+    repoPath: string
+    password: string
+    forceReinit?: boolean
+}
+
+export interface InitializeRepositoryResult {
+    normalizedRepo: string
+    nextConfig: InitConfigPayload
+    initResult: CoreResult
+}
+
+const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
+    sourcePaths: [],
+    repoPath: normalizedRepo,
+    gistId: '',
+    gistEnabled: false,
+    s3DestinationsJson: '[]',
+    cronSchedule: '',
+    compression: 1,
+    extraVerify: true,
+    packSizeMib: 32,
+    chunkSizeMib: 1,
+    savedPassword: '',
+    providerConfigsJson: '{}',
+})
+
 export const bekkCore = {
-    init(repo: string, password: string, perf: PerfOpts = {}) {
-        const { compression = 1, extraVerify = true, packSizeMib = 32, chunkSizeMib = 1 } = perf
+    init(repo: string, password: string, opts: InitOpts = {}): Promise<CoreResult> {
+        const {
+            compression = 1,
+            extraVerify = true,
+            packSizeMib = 32,
+            chunkSizeMib = 1,
+            forceReinit = false,
+        } = opts
         const args = [
             'init',
             '--repo',
@@ -87,16 +149,26 @@ export const bekkCore = {
             String(chunkSizeMib),
         ]
         if (!extraVerify) args.push('--no-extra-verify')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        if (forceReinit) args.push('--force-reinit')
+        return runBekkCore(args, password)
     },
 
-    backup(
-        repo: string,
-        password: string,
-        sources: string[],
-        dryRun = false,
-        tag?: string,
-    ): Promise<CoreResult<BackupData>> {
+    async initializeRepository(
+        opts: InitializeRepositoryOpts,
+    ): Promise<InitializeRepositoryResult> {
+        const { repoPath, password, forceReinit = false } = opts
+        const nextConfig = buildInitConfig(normalize(repoPath))
+        const initResult = await this.init(normalize(repoPath), password, {
+            compression: nextConfig.compression,
+            extraVerify: nextConfig.extraVerify,
+            packSizeMib: nextConfig.packSizeMib,
+            chunkSizeMib: nextConfig.chunkSizeMib,
+            forceReinit,
+        })
+        return { normalizedRepo: normalize(repoPath), nextConfig, initResult }
+    },
+
+    backup(repo: string, password: string, sources: string[], dryRun = false, tag?: string) {
         const args = [
             'backup',
             '--repo',
@@ -105,9 +177,7 @@ export const bekkCore = {
         ]
         if (dryRun) args.push('--dry-run')
         if (tag) args.push('--tag', tag)
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password }) as Promise<
-            CoreResult<BackupData>
-        >
+        return runBekkCore(args, password) as Promise<CoreResult<BackupData>>
     },
 
     restore(repo: string, password: string, target: string, snapshot = 'latest', dryRun = false) {
@@ -121,13 +191,13 @@ export const bekkCore = {
             target,
         ]
         if (dryRun) args.push('--dry-run')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        return runBekkCore(args, password)
     },
 
-    snapshots(repo: string, password: string): Promise<CoreResult<SnapshotEntry[]>> {
-        return runBekkCore(['snapshots', '--repo', toRepoArg(repo)], {
-            BEKK_REPO_PASSWORD: password,
-        }) as Promise<CoreResult<SnapshotEntry[]>>
+    snapshots(repo: string, password: string) {
+        return runBekkCore(['snapshots', '--repo', toRepoArg(repo)], password) as Promise<
+            CoreResult<SnapshotEntry[]>
+        >
     },
 
     applyConfig(repo: string, password: string, perf: PerfOpts = {}) {
@@ -144,6 +214,10 @@ export const bekkCore = {
             String(chunkSizeMib),
         ]
         if (!extraVerify) args.push('--no-extra-verify')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        return runBekkCore(args, password)
+    },
+
+    changePassword(repo: string, oldPassword: string, newPassword: string) {
+        return runBekkCore(['change-password', '--repo', toRepoArg(repo)], oldPassword, newPassword)
     },
 }
