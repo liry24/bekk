@@ -51,7 +51,11 @@ bekk backup
 
 ### `bekk init`
 
-Interactive setup. Sets the backup destination and creates a default config file.
+Interactive setup wizard. Walks you through:
+
+1. Choosing a backup destination (local folder or cloud storage via rclone)
+2. Setting an encryption password (or auto-generating one)
+3. Optionally enabling sync backends (GitHub Gist or S3-compatible storage)
 
 ---
 
@@ -80,15 +84,25 @@ See available snapshots with `bekk snapshots`.
 
 ---
 
+### `bekk snapshots`
+
+List all snapshots in the backup repository.
+
+| Flag     | Short | Description                                  |
+| -------- | ----- | -------------------------------------------- |
+| `--json` |       | Output raw JSON instead of a formatted table |
+
+---
+
 ### `bekk schedule`
 
 Manage the automated backup schedule.
 
-| Subcommand            | Description                                     |
-| --------------------- | ----------------------------------------------- |
-| `schedule register`   | Register the backup daemon as a startup service |
-| `schedule unregister` | Remove the registered startup service           |
-| `schedule status`     | Show the current schedule and next run time     |
+| Subcommand            | Description                                                       |
+| --------------------- | ----------------------------------------------------------------- |
+| `schedule register`   | Register the backup daemon as a startup service                   |
+| `schedule unregister` | Remove the registered startup service and clear the cron schedule |
+| `schedule status`     | Show the current schedule and next run time                       |
 
 #### How it works
 
@@ -106,6 +120,14 @@ Platform support:
 | Linux    | systemd system unit     | systemd user unit             |
 
 Run as admin/root to register a system-wide service; otherwise it registers for the current user only.
+
+---
+
+### `bekk daemon`
+
+Run the backup daemon in the foreground. It stays resident and triggers backups automatically based on the cron schedule configured with `bekk schedule register`.
+
+The daemon writes its activity log to the OS data directory (e.g. `%APPDATA%\bekk\daemon.log` on Windows). Press `Ctrl+C` to stop.
 
 ---
 
@@ -130,7 +152,11 @@ Interactive configuration menu. Run `bekk config` to open the menu.
 | Chunk size   | Average chunk size for deduplication (MiB)          | 1 MiB           |
 | Extra verify | Re-decrypt/decompress each pack before upload       | Enabled         |
 
+> **Note:** The interactive `config` menu offers preset compression levels. You can set any value between `-7` and `22` by editing the config file directly.
+
 `bekk config show` prints all current settings without entering the menu.
+
+`bekk config open` opens the config directory in your file explorer.
 
 #### Password storage
 
@@ -153,16 +179,16 @@ Sync your config and app lists to/from external storage backends (GitHub Gist, S
 
 **`bekk push`** — saves current app lists, then uploads to all enabled backends.
 
-| Flag        | Short | Description                                      |
-| ----------- | ----- | ------------------------------------------------ |
-| `--backend` | `-b`  | Push to a specific backend by name (e.g. `gist`) |
+| Flag        | Short | Description                                                 |
+| ----------- | ----- | ----------------------------------------------------------- |
+| `--backend` | `-b`  | Push to a specific backend by name (e.g. `gist`, `work-r2`) |
 
 **`bekk pull`** — downloads config and app lists from a backend and writes them locally. If multiple backends are enabled and `--backend` is not specified, you will be prompted to choose one.
 
-| Flag        | Short | Description                                        |
-| ----------- | ----- | -------------------------------------------------- |
-| `--backend` | `-b`  | Pull from a specific backend by name (e.g. `gist`) |
-| `--from`    | `-f`  | Identifier override (Gist ID/URL or S3 object key) |
+| Flag        | Short | Description                                                   |
+| ----------- | ----- | ------------------------------------------------------------- |
+| `--backend` | `-b`  | Pull from a specific backend by name (e.g. `gist`, `work-r2`) |
+| `--from`    | `-f`  | Identifier override (Gist ID/URL or S3 object key)            |
 
 To enable a backend, run `bekk gist login` (for Gist) or configure an S3 destination via `bekk config`.
 
@@ -179,10 +205,14 @@ Manage GitHub Gist sync.
 
 ## 🛠️ Stack
 
-- rustic: Backup engine (Rust)
-- Crust: Cross-platform CLI framework
-- Bun: JavaScript runtime
+- [Rustic][rustic]: Backup engine (Rust)
+- [Crust][crust]: Cross-platform CLI framework
+- [Bun][bun]: JavaScript runtime
 
 ## ⚖️ License
 
 MIT
+
+[bun]: https://bun.sh
+[crust]: https://crustjs.com
+[rustic]: https://rustic.cli.rs/
