@@ -7,6 +7,7 @@ import { join } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { backupApps } from '#lib/apps'
+import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -86,12 +87,17 @@ export const daemonCmd = app
             process.exit(1)
         }
 
-        console.log(green('✓ ' + bold('bekk daemon started')))
-        console.log(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
-        console.log(dim('  Next run:  ') + cyan(next.toLocaleString()))
-        console.log(dim('  Log file:  ') + dim(logPath))
-        console.log()
-        console.log(yellow('Press Ctrl+C to stop.'))
+        cliLog({
+            messages: [
+                green('✓ ' + bold('bekk daemon started')),
+                dim('  Schedule:  ') + cyan(cfg.cronSchedule),
+                dim('  Next run:  ') + cyan(next.toLocaleString()),
+                dim('  Log file:  ') + dim(logPath),
+                '',
+                yellow('Press Ctrl+C to stop.'),
+            ],
+            padding: { side: 'bottom' },
+        })
 
         await appendLog(logPath, 'INFO', `Daemon started — schedule: ${cfg.cronSchedule}`)
 

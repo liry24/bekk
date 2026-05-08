@@ -14,6 +14,7 @@ import open from 'open'
 import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
+import { cliLog } from '#lib/log'
 import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -135,10 +136,14 @@ const changePassword = async () => {
     })
 
     if (wasGenerated) {
-        console.log()
-        console.log(yellow(bold('New auto-generated password:')))
-        console.log('  ' + bold(newPassword))
-        console.log(dim('  Keep this safe — it is required to restore your backups.'))
+        cliLog({
+            messages: [
+                yellow(bold('New auto-generated password:')),
+                '  ' + bold(newPassword),
+                dim('  Keep this safe — it is required to restore your backups.'),
+            ],
+            padding: { side: 'top' },
+        })
     }
     consola.success(green('Password updated.'))
 }

@@ -8,6 +8,7 @@ import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { backupApps, listScoop, listWinget } from '#lib/apps'
+import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -85,7 +86,7 @@ export const backupCmd = app
             // Local data backup via bekk-core / rustic
             const sources = [...cfg.sourcePaths]
             const label = sources.map((s) => cyan(s)).join(', ')
-            console.log()
+            cliLog({ padding: { side: 'top' } })
 
             let snapshotId = ''
             try {

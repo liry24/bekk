@@ -6,6 +6,7 @@ import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
+import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -70,9 +71,15 @@ export const restoreCmd = app
                 })
 
                 if (flags['dry-run']) {
-                    consola.success(green('[dry run] Restore simulation complete.'))
+                    cliLog({
+                        messages: green('[dry run] Restore simulation complete.'),
+                        type: 'success',
+                    })
                 } else {
-                    consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
+                    cliLog({
+                        messages: green(bold('Restore complete')) + `  → ${dim(target)}`,
+                        type: 'success',
+                    })
                 }
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err)
