@@ -64,7 +64,7 @@ export const pullCmd = app
                 return
             }
 
-            let syncData!: SyncData
+            let syncData: SyncData | undefined
 
             try {
                 await spinner({
@@ -76,6 +76,12 @@ export const pullCmd = app
                         )
                     },
                 })
+
+                if (!syncData) {
+                    consola.error(`Pull from ${backend.label} failed: no data received`)
+                    process.exitCode = 1
+                    return
+                }
 
                 // Write config locally
                 await configStore.write(syncData.config)
