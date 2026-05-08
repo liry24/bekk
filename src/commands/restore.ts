@@ -21,7 +21,7 @@ export const restoreCmd = app
         target: flag(z.string().optional().describe('Destination path for restored files'), {
             short: 't',
         }),
-        dryRun: flag(
+        'dry-run': flag(
             z.boolean().default(false).describe('Dry run — preview without writing files'),
             { short: 'd' },
         ),
@@ -56,21 +56,21 @@ export const restoreCmd = app
 
             try {
                 await spinner({
-                    message: `Restoring ${label}${flags.dryRun ? dim(' [dry run]') : ''}`,
+                    message: `Restoring ${label}${flags['dry-run'] ? dim(' [dry run]') : ''}`,
                     task: async ({ updateMessage }) => {
                         const result = await bekkCore.restore(
                             cfg.repoPath,
                             password,
                             target,
                             flags.snapshot,
-                            flags.dryRun,
+                            flags['dry-run'],
                         )
                         if (result.status === 'error') throw new Error(result.message)
                         updateMessage(`Restore complete: ${label}`)
                     },
                 })
 
-                if (flags.dryRun) {
+                if (flags['dry-run']) {
                     consola.success(green('[dry run] Restore simulation complete.'))
                 } else {
                     consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)

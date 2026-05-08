@@ -16,7 +16,7 @@ export const backupCmd = app
     .sub('backup')
     .meta({ description: 'Run local data backup and app list backup' })
     .flags({
-        dryRun: flag(
+        'dry-run': flag(
             z
                 .boolean()
                 .default(false)
@@ -51,10 +51,12 @@ export const backupCmd = app
             try {
                 let summary = ''
                 await spinner({
-                    message: flags.dryRun ? 'Scanning installed apps...' : 'Saving app lists...',
+                    message: flags['dry-run']
+                        ? 'Scanning installed apps...'
+                        : 'Saving app lists...',
                     task: async ({ updateMessage }) => {
                         const parts: string[] = []
-                        if (flags.dryRun) {
+                        if (flags['dry-run']) {
                             const scoop = listScoop()
                             const winget = listWinget(cfg.wingetIncludeSources)
                             if (scoop !== null) parts.push(`Scoop: ${scoop.length} apps`)
@@ -69,7 +71,7 @@ export const backupCmd = app
                         }
                         summary = parts.join('  ')
                         updateMessage(
-                            flags.dryRun
+                            flags['dry-run']
                                 ? dim('[dry run] ') + `App list backup would save  —  ${summary}`
                                 : `App list backup complete  —  ${summary}`,
                         )
@@ -91,14 +93,14 @@ export const backupCmd = app
                 await spinner({
                     message: `Backing up: ${label}`,
                     task: async ({ updateMessage }) => {
-                        if (flags.dryRun) {
+                        if (flags['dry-run']) {
                             updateMessage(`${dim('[dry run]')} Backing up: ${label}`)
                         }
                         const result = await bekkCore.backup(
                             cfg.repoPath,
                             password,
                             sources,
-                            flags.dryRun,
+                            flags['dry-run'],
                             flags.tag,
                         )
                         if (result.status === 'error') throw new Error(result.message)
@@ -109,7 +111,7 @@ export const backupCmd = app
                                     green(bold('Backup complete')) +
                                         `  snapshot ${dim(snapshotId.slice(0, 8))}`,
                                 )
-                            } else if (flags.dryRun) {
+                            } else if (flags['dry-run']) {
                                 updateMessage(green('[dry run] Backup simulation complete.'))
                             }
                         }
