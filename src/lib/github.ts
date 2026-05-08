@@ -107,5 +107,3 @@ export const runDeviceFlow = async (clientId: string) => {
         }
     }
 }
-
-

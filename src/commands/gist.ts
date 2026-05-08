@@ -2,8 +2,8 @@ import { confirm } from '@crustjs/prompts'
 import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import { createConsola } from 'consola'
 
-import { cliLog } from '#lib/log'
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { cliLog } from '#lib/log'
 
 import { app } from '../app'
 import { authStore, configStore } from '../store'

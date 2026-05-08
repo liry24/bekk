@@ -58,6 +58,7 @@ Use `bumpp` (config: `bump.config.ts`). Bumping updates **both** `package.json` 
 ## CI
 
 `.github/workflows/build.yml` runs on PRs to `main`:
+
 1. `cargo check` (Rust)
 2. `bun install --frozen-lockfile`
 3. `bun run fmt:check`
@@ -68,6 +69,7 @@ Use `bumpp` (config: `bump.config.ts`). Bumping updates **both** `package.json` 
 ## Crust CLI Framework
 
 Commands live in `src/commands/*.ts`. Each exports a command built with `app.sub('name')` and registered in `src/cli.ts`.
+
 - Use `@crustjs/prompts` for interactive prompts.
 - Use `@crustjs/style` for colors/formatting.
 - Use `@crustjs/progress` for spinners.
