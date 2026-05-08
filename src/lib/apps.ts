@@ -1,7 +1,6 @@
 import { join } from 'pathe'
 
 // winget and scoop are invoked via powershell.exe which outputs UTF-8.
-// Do NOT use getOemEncoding() here — that is for native Win32 binaries like robocopy.
 const utf8 = new TextDecoder('utf-8')
 
 export interface ScoopApp {

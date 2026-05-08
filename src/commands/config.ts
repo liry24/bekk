@@ -11,9 +11,9 @@ import { configDir } from '@crustjs/store'
 import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 import open from 'open'
+import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
-import { normalizePath } from '#lib/pathUtils'
 import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -147,7 +147,7 @@ const configureDestination = async () => {
         default: cfg.repoPath || undefined,
         placeholder: '/path/to/repo or S3 URL',
     })
-    const path = normalizePath(raw.trim())
+    const path = normalize(raw.trim())
     await configStore.patch({ repoPath: path })
     consola.success(green(`Backup destination set: ${bold(path)}`))
 }
@@ -179,7 +179,7 @@ const configureSources = async () => {
             })
             const trimmed = raw.trim()
             if (!trimmed) break
-            const path = normalizePath(trimmed)
+            const path = normalize(trimmed)
             await configStore.update((c) => {
                 if (c.sourcePaths.includes(path)) return c
                 return { ...c, sourcePaths: [...c.sourcePaths, path] }
