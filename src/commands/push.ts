@@ -41,9 +41,11 @@ export const pushCmd = app
                     )
                     syncData = { config: cfg, appLists: { scoop, winget } }
                     const parts: string[] = []
-                    if (scoop !== null) parts.push(`Scoop: ${scoop.length} apps`)
-                    parts.push(`Winget: ${winget.length} apps`)
-                    updateMessage('App lists saved  —  ' + parts.join('  '))
+
+                    if (scoop !== null) parts.push(`Scoop: ${scoop.length}`)
+                    parts.push(`Winget: ${winget.length}`)
+
+                    updateMessage('App lists saved: ' + dim(parts.join(', ')))
                 },
             })
 
