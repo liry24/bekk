@@ -15,6 +15,7 @@ export interface PackageProvider {
     readonly platforms: NodeJS.Platform[]
     isAvailable: () => boolean
     list: () => Promise<App[] | null>
+    install: (app: App) => Promise<boolean>
 }
 
 export interface S3Destination {

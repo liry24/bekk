@@ -1,58 +1,22 @@
+import { destr } from 'destr'
+
 // winget and scoop are invoked via powershell.exe which outputs UTF-8.
 const utf8 = new TextDecoder('utf-8')
 
-/**
- * Parse a fixed-width text table that uses a dashes-separator row to delimit
- * the header from the data.  Column boundaries are inferred from the positions
- * of the dash groups in the separator line.
- */
-const parseFixedWidthTable = (output: string) => {
-    const lines = output.split(/\r?\n/)
+interface ScoopExportApp {
+    Name: string
+    Version: string
+    Source?: string
+    Bucket?: string
+}
 
-    // Locate the separator: a line of dash groups and whitespace only
-    const sepIdx = lines.findIndex((l) => /^[\s-]+$/.test(l) && /-{2,}/.test(l))
-    if (sepIdx < 1) return null
-
-    const header = lines[sepIdx - 1]!
-    const sep = lines[sepIdx]!
-
-    // Derive column start positions from dash group positions
-    const cols: { start: number; name: string }[] = []
-    const dashRe = /-+/g
-    let m: RegExpExecArray | null
-    while ((m = dashRe.exec(sep)) !== null) cols.push({ start: m.index, name: '' })
-
-    if (cols.length === 0) return null
-
-    // Extract column names from the header line
-    for (let i = 0; i < cols.length; i++) {
-        const end = cols[i + 1]?.start ?? header.length
-        cols[i]!.name = header.substring(cols[i]!.start, end).trim()
-    }
-
-    const rows: Record<string, string>[] = []
-    for (const line of lines.slice(sepIdx + 1)) {
-        if (!line.trim()) continue
-        // Skip trailing summary lines like "15 packages found."
-        if (/^\d+\s+\S/.test(line.trim())) continue
-
-        const row: Record<string, string> = {}
-        for (let i = 0; i < cols.length; i++)
-            row[cols[i]!.name] =
-                line.length > cols[i]!.start
-                    ? line.substring(cols[i]!.start, cols[i + 1]?.start ?? line.length).trim()
-                    : ''
-
-        // Skip completely empty rows
-        if (Object.values(row).every((v) => !v)) continue
-        rows.push(row)
-    }
-    return rows
+interface ScoopExport {
+    apps?: ScoopExportApp[]
 }
 
 /**
  * Returns a list of installed Scoop apps, or `null` if Scoop is not installed.
- * Silently returns null on any error (no warning displayed).
+ * Uses `scoop export` which outputs stable JSON.
  */
 export const listScoop = () => {
     // -ExecutionPolicy Bypass is required: scoop is a .ps1 script and the default
@@ -65,79 +29,90 @@ export const listScoop = () => {
             '-ExecutionPolicy',
             'Bypass',
             '-Command',
-            'scoop list',
+            'scoop export',
         ],
         { stderr: 'ignore' },
     )
     if (result.exitCode !== 0) return null
 
     const output = utf8.decode(result.stdout)
-    const rows = parseFixedWidthTable(output)
-    if (!rows) return []
+    const data = destr<ScoopExport>(output)
+    if (!data?.apps) return null
 
-    return rows
-        .filter((r) => r['Name'])
-        .map((r) => ({
-            name: r['Name'] ?? '',
-            version: r['Version'] ?? '',
-            // Newer Scoop uses "Source", older uses "Bucket"
-            source: r['Source'] ?? r['Bucket'] ?? '',
-        }))
+    return data.apps.map((r) => ({
+        name: r.Name,
+        version: r.Version,
+        // Newer Scoop uses "Source", older uses "Bucket"
+        source: r.Source ?? r.Bucket ?? '',
+    }))
+}
+
+interface WingetExportPackage {
+    PackageIdentifier: string
+    Version: string
+}
+
+interface WingetExportSource {
+    Packages: WingetExportPackage[]
+    SourceDetails: { Name: string }
+}
+
+interface WingetExportJson {
+    Sources: WingetExportSource[]
 }
 
 /**
- * Returns a list of installed winget apps, filtered to only the specified
- * sources.  An empty string `''` in `includeSources` matches apps with no
- * known source (e.g. sideloaded packages).
+ * Returns a list of installed winget apps using `winget export` which emits
+ * stable JSON with PackageIdentifier and Version.
  */
-export const listWinget = (includeSources: string[]) => {
-    const result = Bun.spawnSync(
+export const listWinget = async (includeSources: string[]) => {
+    const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${Date.now()}.json`
+    const exportResult = Bun.spawnSync(
         [
             'powershell.exe',
             '-NoProfile',
             '-NonInteractive',
             '-Command',
-            'winget list --disable-interactivity --accept-source-agreements',
+            `winget export -o "${tmpFile}" --include-versions --accept-source-agreements --disable-interactivity`,
         ],
         { stderr: 'ignore' },
     )
-    // winget may return non-zero even on success; treat output as best-effort
-    const output = utf8.decode(result.stdout)
 
-    // winget's separator is a single continuous dash line (no gaps between columns),
-    // and headers are localised. Parse data rows by splitting on 2+ spaces instead.
-    const lines = output.split(/\r?\n/)
-    const sepIdx = lines.findIndex((l) => /^[\s-]+$/.test(l) && /-{2,}/.test(l))
-    if (sepIdx < 0) return []
+    if (exportResult.exitCode !== 0) return []
+
+    const file = Bun.file(tmpFile)
+    if (!(await file.exists())) return []
+
+    const text = await file.text()
+    try {
+        await Bun.write(tmpFile, '')
+        await file.delete()
+    } catch {
+        // ignore cleanup errors
+    }
+
+    const data = destr<WingetExportJson>(text)
+    if (!data?.Sources) return []
 
     const apps: {
         name: string
         id: string
         version: string
-        available?: string
         source: string
     }[] = []
-    for (const line of lines.slice(sepIdx + 1)) {
-        if (!line.trim()) continue
-        // Skip trailing summary lines like "15 packages found."
-        if (/^\d+\s+\S/.test(line.trim())) continue
 
-        // Split by 2+ consecutive spaces to extract columns positionally.
-        // Column order is always: Name, Id, Version, [Available,] Source
-        const cols = line.trim().split(/\s{2,}/)
-        if (cols.length < 3) continue
-
-        const name = cols[0] ?? ''
-        const id = cols[1] ?? ''
-        const version = cols[2] ?? ''
-        // Source is always the last column; Available is present only when there are 5+ cols
-        const source = cols[cols.length - 1] ?? ''
-        const available = cols.length >= 5 ? (cols[3] ?? '') : undefined
-
-        if (!name || !id) continue
-        if (!includeSources.includes(source)) continue
-
-        apps.push({ name, id, version, source, ...(available ? { available } : {}) })
+    for (const source of data.Sources) {
+        const sourceName = source.SourceDetails?.Name ?? ''
+        if (!includeSources.includes(sourceName)) continue
+        for (const pkg of source.Packages) {
+            apps.push({
+                name: pkg.PackageIdentifier,
+                id: pkg.PackageIdentifier,
+                version: pkg.Version,
+                source: sourceName,
+            })
+        }
     }
+
     return apps
 }

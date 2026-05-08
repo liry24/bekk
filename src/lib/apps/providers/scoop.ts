@@ -22,4 +22,20 @@ export const scoopProvider: PackageProvider = {
                 }) satisfies App,
         )
     },
+
+    install: async (app) => {
+        const result = Bun.spawnSync(
+            [
+                'powershell.exe',
+                '-NoProfile',
+                '-NonInteractive',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-Command',
+                `scoop install "${app.name}@${app.version}"`,
+            ],
+            { stderr: 'pipe' },
+        )
+        return result.exitCode === 0
+    },
 }

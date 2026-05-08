@@ -25,7 +25,7 @@ export const wingetProvider: PackageProvider = {
     isAvailable: () => commandExists('winget'),
 
     list: async () => {
-        const raw = listWinget(await getWingetSources())
+        const raw = await listWinget(await getWingetSources())
         return raw.map(
             (r) =>
                 ({
@@ -34,9 +34,23 @@ export const wingetProvider: PackageProvider = {
                     source: r.source,
                     meta: {
                         id: r.id,
-                        available: r.available,
                     },
                 }) satisfies App,
         )
+    },
+
+    install: async (app) => {
+        const id = (app.meta?.id as string | undefined) ?? app.name
+        const result = Bun.spawnSync(
+            [
+                'powershell.exe',
+                '-NoProfile',
+                '-NonInteractive',
+                '-Command',
+                `winget install --id "${id}" --exact --accept-source-agreements --disable-interactivity`,
+            ],
+            { stderr: 'pipe' },
+        )
+        return result.exitCode === 0
     },
 }
