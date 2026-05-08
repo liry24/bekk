@@ -1,6 +1,8 @@
 import { CancelledError, confirm, input, multiselect, password, select } from '@crustjs/prompts'
+import { configDir } from '@crustjs/store'
 import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
+import open from 'open'
 
 import { app } from '../app'
 import { bekkCore } from '../lib/bekk-core'
@@ -44,6 +46,22 @@ const showCmd = app
         console.log()
 
         console.log(bold('GitHub Gist ID:'), cfg.gistId || dim('(not set)'))
+    })
+
+// ─── config open ─────────────────────────────────────────────────────────────
+
+const openCmd = app
+    .sub('config')
+    .sub('open')
+    .meta({ description: 'Open config file directory in file explorer' })
+    .run(async () => {
+        try {
+            const dir = configDir('bekk')
+            console.log(green('Opening config directory:'), dim(dir))
+            await open(dir, { wait: true })
+        } catch {
+            consola.error('An error occurred while trying to open the config directory.')
+        }
     })
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -284,6 +302,7 @@ export const configCmd = app
     .sub('config')
     .meta({ description: 'Manage configuration' })
     .command(showCmd)
+    .command(openCmd)
     .run(async () => {
         try {
             const cfg = await configStore.read()
