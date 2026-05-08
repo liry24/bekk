@@ -3,8 +3,9 @@ import { flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
+import { bekkCore, type SnapshotEntry } from '#bekk-core'
+
 import { app } from '../app'
-import { bekkCore, type SnapshotEntry } from '../lib/bekk-core'
 import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 

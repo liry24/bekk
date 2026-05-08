@@ -5,9 +5,10 @@ import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { join } from 'pathe'
 
+import { bekkCore } from '#bekk-core'
+
 import { app } from '../app'
 import { backupApps } from '../lib/apps'
-import { bekkCore } from '../lib/bekk-core'
 import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 

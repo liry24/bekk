@@ -6,9 +6,10 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { bekkCore } from '#bekk-core'
+
 import { app } from '../app'
 import { backupApps, listScoop, listWinget } from '../lib/apps'
-import { bekkCore } from '../lib/bekk-core'
 import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 

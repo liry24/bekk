@@ -2,9 +2,11 @@ import { spinner } from '@crustjs/progress'
 import { confirm, input, multiselect, password, select } from '@crustjs/prompts'
 import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
+import { normalize } from 'pathe'
+
+import { bekkCore } from '#bekk-core'
 
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
 import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '../lib/secrets'
 import type { S3Destination } from '../lib/sync'
 import { authStore, configStore } from '../store'
@@ -100,7 +102,7 @@ export const initCmd = app
         })
 
         // ── Step 3: Initialize ─────────────────────────────────────────────────
-        const normalizedRepo = bekkCore.normalizeRepoPath(repoPath)
+        const normalizedRepo = normalize(repoPath)
         const sameConfiguredRepo = Boolean(
             existing.repoPath && normalizedRepo === existing.repoPath,
         )

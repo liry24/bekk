@@ -12,8 +12,9 @@ import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 import open from 'open'
 
+import { bekkCore } from '#bekk-core'
+
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
 import { normalizePath } from '../lib/pathUtils'
 import { changeRepoPassword, generatePassword, resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'

@@ -5,8 +5,9 @@ import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
+import { bekkCore } from '#bekk-core'
+
 import { app } from '../app'
-import { bekkCore } from '../lib/bekk-core'
 import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 

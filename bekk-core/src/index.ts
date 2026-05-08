@@ -1,6 +1,4 @@
-import { join, dirname } from 'pathe'
-
-import { normalizePath, toRepoArg } from './pathUtils'
+import { join, dirname, normalize } from 'pathe'
 
 const bekkCoreBin = () => {
     const ext = process.platform === 'win32' ? '.exe' : ''
@@ -18,6 +16,8 @@ const bekkCoreBin = () => {
 
     return bundledPath
 }
+
+const toRepoArg = (p: string) => (/^[A-Za-z]:/.test(p) ? `local:${p}` : p)
 
 // ─── Response types ───────────────────────────────────────────────────────────
 
@@ -127,10 +127,6 @@ const buildInitConfig = (
 })
 
 export const bekkCore = {
-    normalizeRepoPath(repoPath: string) {
-        return normalizePath(repoPath)
-    },
-
     init(repo: string, password: string, opts: InitOpts = {}): Promise<CoreResult> {
         const {
             compression = 1,
@@ -159,16 +155,15 @@ export const bekkCore = {
         opts: InitializeRepositoryOpts,
     ): Promise<InitializeRepositoryResult> {
         const { repoPath, password, savePasswordInConfig, forceReinit = false } = opts
-        const normalizedRepo = normalizePath(repoPath)
-        const nextConfig = buildInitConfig(normalizedRepo, password, savePasswordInConfig)
-        const initResult = await this.init(normalizedRepo, password, {
+        const nextConfig = buildInitConfig(normalize(repoPath), password, savePasswordInConfig)
+        const initResult = await this.init(normalize(repoPath), password, {
             compression: nextConfig.compression,
             extraVerify: nextConfig.extraVerify,
             packSizeMib: nextConfig.packSizeMib,
             chunkSizeMib: nextConfig.chunkSizeMib,
             forceReinit,
         })
-        return { normalizedRepo, nextConfig, initResult }
+        return { normalizedRepo: normalize(repoPath), nextConfig, initResult }
     },
 
     backup(repo: string, password: string, sources: string[], dryRun = false, tag?: string) {

@@ -5,14 +5,6 @@
 export const normalizePath = (p: string) => p.replace(/\\/g, '/')
 
 /**
- * Convert a stored path to the format expected by rustic's `--repo` argument.
- * Windows drive paths (e.g. `C:/path`) must be prefixed with `local:` to prevent
- * rustic from interpreting the drive letter as a backend type identifier.
- * rclone remote paths (e.g. `myremote:bucket/path`) are passed through unchanged.
- */
-export const toRepoArg = (p: string) => (/^[A-Za-z]:/.test(p) ? `local:${p}` : p)
-
-/**
  * Returns the Windows OEM console encoding as a WHATWG-compatible label
  * (e.g. 'shift_jis', 'utf-8', 'windows-1252').
  * Result is cached after the first call.
