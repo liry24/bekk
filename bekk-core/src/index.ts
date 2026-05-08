@@ -92,7 +92,6 @@ export interface InitConfigPayload {
     gistId: string
     gistEnabled: boolean
     s3DestinationsJson: string
-    wingetIncludeSources: string[]
     cronSchedule: string
     compression: number
     extraVerify: boolean
@@ -120,7 +119,6 @@ const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     gistId: '',
     gistEnabled: false,
     s3DestinationsJson: '[]',
-    wingetIncludeSources: ['winget', 'msstore'],
     cronSchedule: '',
     compression: 1,
     extraVerify: true,

@@ -7,7 +7,7 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
-import { isAdmin } from '#lib/apps'
+import { isAdmin } from '#lib/platform'
 
 import { app } from '../app'
 import { configStore } from '../store'

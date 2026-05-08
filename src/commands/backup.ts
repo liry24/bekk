@@ -7,7 +7,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
-import { backupApps, listScoop, listWinget } from '#lib/apps'
+import { backupAllApps, getAvailableProviders } from '#lib/apps'
 import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
@@ -57,17 +57,16 @@ export const backupCmd = app
                     task: async ({ updateMessage }) => {
                         const parts: string[] = []
                         if (flags['dry-run']) {
-                            const scoop = listScoop()
-                            const winget = listWinget(cfg.wingetIncludeSources)
-                            if (scoop !== null) parts.push(`Scoop: ${scoop.length}`)
-                            parts.push(`Winget: ${winget.length}`)
+                            const providers = getAvailableProviders()
+                            for (const p of providers) {
+                                const apps = await p.list()
+                                if (apps !== null) parts.push(`${p.name}: ${apps.length}`)
+                            }
                         } else {
-                            const { scoop, winget } = await backupApps(
-                                appListsDir,
-                                cfg.wingetIncludeSources,
-                            )
-                            if (scoop !== null) parts.push(`Scoop: ${scoop.length}`)
-                            parts.push(`Winget: ${winget.length}`)
+                            const result = await backupAllApps(appListsDir)
+                            for (const [providerId, apps] of Object.entries(result)) {
+                                if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
+                            }
                         }
                         summary = parts.join('  ')
                         updateMessage(

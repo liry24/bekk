@@ -6,7 +6,7 @@ import consola from 'consola'
 import { join } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
-import { backupApps } from '#lib/apps'
+import { backupAllApps } from '#lib/apps'
 import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
@@ -38,10 +38,11 @@ const runBackupCycle = async (logPath: string) => {
 
     const appListsDir = join(dataDir('bekk'), 'app-lists')
     try {
-        const { scoop, winget } = await backupApps(appListsDir, cfg.wingetIncludeSources)
+        const result = await backupAllApps(appListsDir)
         const parts: string[] = []
-        if (scoop !== null) parts.push(`scoop:${scoop.length}`)
-        parts.push(`winget:${winget.length}`)
+        for (const [providerId, apps] of Object.entries(result)) {
+            if (apps !== null) parts.push(`${providerId}:${apps.length}`)
+        }
         await appendLog(logPath, 'INFO', `App lists saved (${parts.join(', ')})`)
     } catch (err) {
         await appendLog(

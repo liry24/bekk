@@ -88,16 +88,14 @@ export const pullCmd = app
 
                 // Write app lists locally
                 const appListsDir = join(dataDir('bekk'), 'app-lists')
-                if (syncData.appLists.scoop !== null)
-                    await Bun.write(
-                        join(appListsDir, 'scoop.json'),
-                        JSON.stringify(syncData.appLists.scoop, null, 2),
-                    )
-
-                await Bun.write(
-                    join(appListsDir, 'winget.json'),
-                    JSON.stringify(syncData.appLists.winget, null, 2),
-                )
+                for (const [providerId, apps] of Object.entries(syncData.appLists)) {
+                    if (apps !== null) {
+                        await Bun.write(
+                            join(appListsDir, `${providerId}.json`),
+                            JSON.stringify(apps, null, 2),
+                        )
+                    }
+                }
             } catch (err) {
                 consola.error(
                     red(`Pull from ${backend.label} failed: `) +

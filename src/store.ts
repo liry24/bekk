@@ -24,13 +24,6 @@ export const configStore = createStore({
             default: '',
             validate: fieldSync(z.string()),
         },
-        wingetIncludeSources: {
-            type: 'string',
-            array: true,
-            // Include winget and msstore by default; exclude blank-source apps
-            default: ['winget', 'msstore'] as string[],
-            validate: fieldSync(z.array(z.string())),
-        },
         cronSchedule: {
             type: 'string',
             default: '',

@@ -129,9 +129,6 @@ export const createGistBackend = (token: string): SyncBackend => {
                         typeof parsedConfig['s3DestinationsJson'] === 'string'
                             ? parsedConfig['s3DestinationsJson']
                             : '[]',
-                    wingetIncludeSources: Array.isArray(parsedConfig['wingetIncludeSources'])
-                        ? (parsedConfig['wingetIncludeSources'] as string[])
-                        : ['winget', 'msstore'],
                     cronSchedule:
                         typeof parsedConfig['cronSchedule'] === 'string'
                             ? parsedConfig['cronSchedule']

@@ -1,5 +1,3 @@
 export { backupAllApps } from './backup'
 export { getAvailableProviders } from './registry'
-export { listScoop, listWinget, backupApps, isAdmin } from './legacy'
-export type { ScoopApp, WingetApp } from './legacy'
 export type { App, PackageProvider } from '#lib/types'
