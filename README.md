@@ -55,18 +55,49 @@ Interactive setup wizard. Walks you through:
 
 1. Choosing a backup destination (local folder or cloud storage via rclone)
 2. Setting an encryption password (or auto-generating one)
-3. Optionally enabling sync backends (GitHub Gist or S3-compatible storage)
+3. Selecting source paths to back up
+4. Optionally enabling sync backends (GitHub Gist or S3-compatible storage)
 
 ---
 
 ### `bekk backup`
 
-Run a backup. Saves app lists (winget / scoop) and creates a new encrypted snapshot of all configured source paths in the repository.
+Run a backup. Saves app lists (winget / scoop) and creates a new encrypted snapshot of all configured source paths in the repository. If a snapshot retention limit is configured, excess old snapshots are automatically removed after the backup succeeds.
 
 | Flag        | Short | Description                                                      |
 | ----------- | ----- | ---------------------------------------------------------------- |
 | `--dry-run` | `-d`  | Dry run — scan apps and preview snapshot changes without writing |
 | `--tag`     | `-t`  | Tag to attach to the snapshot                                    |
+
+---
+
+### `bekk apps`
+
+Manage application lists and installations.
+
+| Subcommand     | Description                     |
+| -------------- | ------------------------------- |
+| `apps list`    | List currently installed apps   |
+| `apps backup`  | Save app lists to local storage |
+| `apps restore` | Restore apps from backup        |
+
+#### `apps list`
+
+Lists applications managed by available package managers (currently winget and scoop on Windows).
+
+#### `apps backup`
+
+Backs up app lists from each available provider to the local data directory.
+
+#### `apps restore`
+
+Compares backed-up app lists against the current environment and lets you selectively install missing apps or update apps to the latest version.
+
+| Flag        | Short | Description                                 |
+| ----------- | ----- | ------------------------------------------- |
+| `--dry-run` | `-d`  | Preview changes without installing anything |
+
+> **Note:** App list backup/restore is currently only available on Windows.
 
 ---
 
@@ -91,6 +122,19 @@ List all snapshots in the backup repository.
 | Flag     | Short | Description                                  |
 | -------- | ----- | -------------------------------------------- |
 | `--json` |       | Output raw JSON instead of a formatted table |
+
+---
+
+### `bekk clean`
+
+Run repository maintenance: prune orphaned data, check repository integrity, and repair the index.
+
+| Flag               | Short | Description                                                              |
+| ------------------ | ----- | ------------------------------------------------------------------------ |
+| `--dry-run`        | `-d`  | Dry run — preview prune results without making changes                   |
+| `--instant-delete` |       | Delete unreferenced pack files immediately (unsafe with parallel access) |
+
+By default, `bekk clean` asks whether to enable instant-delete interactively. In dry-run mode, only the prune preview is shown and check/repair are skipped.
 
 ---
 
@@ -140,6 +184,7 @@ Interactive configuration menu. Run `bekk config` to open the menu.
 | Backup destination | Set or change the backup repo path                         |
 | Source paths       | Add or remove folders to back up                           |
 | Password           | Change the backup password; optionally save to config file |
+| Sync backends ▶    | Configure Gist and S3 destinations for `bekk push`         |
 | Advanced ▶         | App list, compression, pack size, chunk size, verify       |
 
 #### Advanced settings:

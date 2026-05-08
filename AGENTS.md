@@ -51,6 +51,20 @@ bun run build:all              # build:core + build
 - Dev build path: `bekk-core/target/debug/bekk-core`
 - Release build path: `bekk-core/target/release/bekk-core`
 
+### Supported commands
+
+The backend exposes these operations via JSON-RPC over stdin/stdout:
+
+- `initialize_repository` — Create or reinitialize a backup repository
+- `backup` — Create a snapshot; prune excess snapshots **after** success if a retention limit is configured
+- `restore` — Restore files from a snapshot
+- `snapshots` — List snapshots
+- `clean` — Prune orphaned data, check repository integrity, and repair index
+
+### Prune timing
+
+Snapshot pruning triggered by the retention limit runs **after** `backup()` succeeds. It does not run if the backup fails or is cancelled.
+
 ## Version Bumping
 
 Use `bumpp` (config: `bump.config.ts`). Bumping updates **both** `package.json` and `bekk-core/Cargo.toml`, then runs `cargo update` for the Rust workspace.
@@ -75,6 +89,10 @@ Commands live in `src/commands/*.ts`. Each exports a command built with `app.sub
 - Use `@crustjs/progress` for spinners.
 - CLI logging utility: `src/lib/log.ts` (`cliLog()`) — project-specific helper for multi-line output blocks (not part of Crust).
 
+## UI Components
+
+- `src/lib/ui/task-list.ts` (`createTaskList`) is a **live-updating** task list that uses ANSI cursor control to redraw lines in place. Do not confuse it with `@crustjs/style`'s static `taskList()` formatter, which is only for one-shot string output.
+
 ## Testing
 
 No test suite exists currently. Do not add tests unless explicitly requested.
@@ -85,3 +103,12 @@ No test suite exists currently. Do not add tests unless explicitly requested.
 - **Password handling**: Password is passed to `bekk-core` via stdin (`--password-stdin` flag). The old `BEKK_REPO_PASSWORD` env var mechanism was removed.
 - **Config store**: Uses `@crustjs/store` with Zod validation. Config dir is OS-specific (`configDir('bekk')`).
 - **Do not commit**: Never run `git commit` unless explicitly asked. Never push to remote unless explicitly asked.
+- **Dry-run testing**: After implementing CLI output changes (e.g. progress bars, spinners, task lists), always run `bun run dev backup --dry-run` to verify terminal rendering. Do not skip this step when a dry-run-capable command exists for the modified feature.
+
+## Documentation Maintenance
+
+When you make changes that affect user-facing behavior, architecture, or development conventions:
+
+1. Update `README.md` to reflect new commands, flags, workflows, or usage examples.
+2. Update `AGENTS.md` if the change affects architecture, constraints, or agent-critical context.
+3. **Notify the user** in your response of exactly which documentation updates were made and why.
