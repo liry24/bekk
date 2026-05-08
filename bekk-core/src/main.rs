@@ -203,6 +203,13 @@ fn read_new_password() -> Result<String> {
 fn cmd_change_password(repo: &str) -> Result<Value> {
     let old_password = read_password()?;
     let new_password = read_new_password()?;
+
+    if old_password == new_password {
+        return Err(anyhow!(
+            "New password must differ from the current password"
+        ));
+    }
+
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let old_credentials = Credentials::password(old_password);
@@ -214,7 +221,11 @@ fn cmd_change_password(repo: &str) -> Result<Value> {
         // Re-open with new credentials to authenticate the delete
         let new_credentials = Credentials::password(new_password);
         let reopened = Repository::new(&repo_opts, &backends)?.open(&new_credentials)?;
-        reopened.delete_key(&kid)?;
+        // Guard: skip deletion if rustic resolved to the same key (should not happen
+        // after the early-return above, but defensive against edge cases)
+        if reopened.key_id().as_ref() != Some(&kid) {
+            reopened.delete_key(&kid)?;
+        }
     }
 
     Ok(json!({ "status": "ok" }))

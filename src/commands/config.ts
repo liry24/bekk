@@ -134,8 +134,6 @@ const changePassword = async () => {
         },
     })
 
-    await configStore.patch({ savedPassword: saveInConfig ? newPassword : '' })
-
     if (wasGenerated) {
         console.log()
         console.log(yellow(bold('New auto-generated password:')))
