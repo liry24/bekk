@@ -7,7 +7,7 @@ import { normalize } from 'pathe'
 import { bekkCore } from '#bekk-core'
 import { cliLog } from '#lib/log'
 import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '#lib/secrets'
-import type { S3Destination } from '#lib/sync'
+import type { S3Destination } from '#lib/types'
 
 import { app } from '../app'
 import { authStore, configStore } from '../store'

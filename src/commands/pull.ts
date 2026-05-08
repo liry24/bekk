@@ -8,7 +8,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { getEnabledBackends } from '#lib/sync'
-import type { SyncData } from '#lib/sync'
+import type { SyncData } from '#lib/types'
 
 import { app } from '../app'
 import { configStore } from '../store'

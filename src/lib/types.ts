@@ -6,7 +6,7 @@ export interface App<T = Record<string, unknown>> {
     name: string
     version: string
     source?: string
-    meta: T
+    meta?: T
 }
 
 export interface PackageProvider {

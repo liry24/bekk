@@ -8,7 +8,7 @@ import { z } from 'zod'
 
 import { backupApps } from '#lib/apps'
 import { getEnabledBackends } from '#lib/sync'
-import type { SyncData } from '#lib/sync'
+import type { SyncData } from '#lib/types'
 
 import { app } from '../app'
 import { configStore } from '../store'
