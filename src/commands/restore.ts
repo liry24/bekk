@@ -76,10 +76,14 @@ export const restoreCmd = app
                     consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
                 }
             } catch (err) {
-                consola.error(
-                    red('Restore failed: ') + (err instanceof Error ? err.message : String(err)),
-                )
-                process.exitCode = 1
+                const message = err instanceof Error ? err.message : String(err)
+                if (/No snapshots found/i.test(message)) {
+                    consola.error(red('Restore failed:'), 'No snapshots found in this repository.')
+                    consola.info(dim('Run `bekk backup` first, then retry `bekk restore`.'))
+                    return
+                }
+                consola.error(red('Restore failed: ') + message)
+                return
             }
         }),
     )
