@@ -1,4 +1,8 @@
+import { select } from '@crustjs/prompts'
+
 import { bekkCore } from '#bekk-core'
+
+import { configStore } from '../store'
 
 // NOTE: Bun.secrets is an experimental API (requires Bun >= 1.3.x).
 // It stores credentials using the OS native credential manager:
@@ -21,36 +25,48 @@ export const getRepoPassword = async () =>
     Bun.secrets.get({ service: SERVICE, name: REPO_PASSWORD_KEY })
 
 /**
- * Resolve the repo password from (in priority order):
- * 1. BEKK_REPO_PASSWORD environment variable
- * 2. OS credential manager
- * 3. savedPassword field in config store
+ * Resolve the repo password from the OS credential manager or the config file.
+ * If both exist but differ, prompts the user to choose which one to use.
+ * Returns `undefined` if no password is found.
  */
 export const resolveRepoPassword = async (): Promise<string | undefined> => {
-    if (Bun.env.BEKK_REPO_PASSWORD) return Bun.env.BEKK_REPO_PASSWORD
     const osPassword = await Bun.secrets.get({ service: SERVICE, name: REPO_PASSWORD_KEY })
-    if (osPassword) return osPassword
-    const { configStore } = await import('../store')
-    const cfg = await configStore.read()
-    return cfg.savedPassword || undefined
+    const { savedPassword } = await configStore.read()
+
+    if (!osPassword && !savedPassword) return
+    else if (osPassword && savedPassword && osPassword !== savedPassword) {
+        const choice = await select({
+            message: 'Which one do you want to use as the repository password?',
+            choices: [
+                { label: 'OS credential manager', value: 'os' },
+                { label: 'Config file', value: 'config' },
+            ],
+        })
+
+        return choice === 'os' ? osPassword : savedPassword
+    } else return osPassword || savedPassword
 }
 
-export const setRepoPassword = async (value: string) => {
+export const setRepoPassword = async (value: string, options: { saveToConfig?: boolean } = {}) => {
+    const { saveToConfig = false } = options
     await Bun.secrets.set({ service: SERVICE, name: REPO_PASSWORD_KEY, value })
+    if (saveToConfig) await configStore.patch({ savedPassword: value })
 }
 
 /**
  * Re-key the rustic repository with a new password, then update the OS credential manager.
  * Throws if the repository re-keying fails (credential store is left unchanged).
  */
-export const changeRepoPassword = async (
-    repo: string,
-    oldPassword: string,
-    newPassword: string,
-) => {
+export const changeRepoPassword = async (options: {
+    repo: string
+    oldPassword: string
+    newPassword: string
+    saveToConfig?: boolean
+}) => {
+    const { repo, oldPassword, newPassword, saveToConfig = false } = options
     const result = await bekkCore.changePassword(repo, oldPassword, newPassword)
     if (result.status === 'error') throw new Error(result.message)
-    await setRepoPassword(newPassword)
+    await setRepoPassword(newPassword, { saveToConfig })
 }
 
 export const deleteRepoPassword = async () =>

@@ -76,9 +76,9 @@ const openCmd = app
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const changePassword = async () => {
-    const cfg = await configStore.read()
+    const { repoPath, savedPassword } = await configStore.read()
 
-    if (!cfg.repoPath) {
+    if (!repoPath) {
         consola.error('No backup destination configured. Run `bekk config` first.')
         return
     }
@@ -109,7 +109,7 @@ const changePassword = async () => {
 
     const saveInConfig = await confirm({
         message: 'Save password to config file?',
-        default: cfg.savedPassword !== '',
+        default: savedPassword !== '',
         active: 'Yes  (⚠ synced to Gist/S3 as plaintext)',
         inactive: 'No  (OS credential manager only — recommended)',
     })
@@ -118,7 +118,12 @@ const changePassword = async () => {
         message: 'Updating repository encryption key…',
         task: async ({ updateMessage }) => {
             try {
-                await changeRepoPassword(cfg.repoPath!, oldPassword, newPassword)
+                await changeRepoPassword({
+                    repo: repoPath!,
+                    oldPassword,
+                    newPassword,
+                    saveToConfig: saveInConfig,
+                })
                 updateMessage(green('Repository encryption key updated.'))
             } catch (err) {
                 throw new Error(

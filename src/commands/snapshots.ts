@@ -33,9 +33,7 @@ export const snapshotsCmd = app
 
         const password = await resolveRepoPassword()
         if (!password) {
-            consola.error(
-                'Repository password is not stored. Run `bekk init` or set BEKK_REPO_PASSWORD.',
-            )
+            consola.error('Repository password is not stored. Run `bekk config`.')
             process.exit(1)
         }
 

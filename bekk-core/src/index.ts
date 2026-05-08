@@ -97,7 +97,6 @@ export interface InitConfigPayload {
 export interface InitializeRepositoryOpts {
     repoPath: string
     password: string
-    savePasswordInConfig: boolean
     forceReinit?: boolean
 }
 
@@ -107,11 +106,7 @@ export interface InitializeRepositoryResult {
     initResult: CoreResult
 }
 
-const buildInitConfig = (
-    normalizedRepo: string,
-    password: string,
-    savePasswordInConfig: boolean,
-): InitConfigPayload => ({
+const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     sourcePaths: [],
     repoPath: normalizedRepo,
     gistId: '',
@@ -123,7 +118,7 @@ const buildInitConfig = (
     extraVerify: true,
     packSizeMib: 32,
     chunkSizeMib: 1,
-    savedPassword: savePasswordInConfig ? password : '',
+    savedPassword: '',
 })
 
 export const bekkCore = {
@@ -154,8 +149,8 @@ export const bekkCore = {
     async initializeRepository(
         opts: InitializeRepositoryOpts,
     ): Promise<InitializeRepositoryResult> {
-        const { repoPath, password, savePasswordInConfig, forceReinit = false } = opts
-        const nextConfig = buildInitConfig(normalize(repoPath), password, savePasswordInConfig)
+        const { repoPath, password, forceReinit = false } = opts
+        const nextConfig = buildInitConfig(normalize(repoPath))
         const initResult = await this.init(normalize(repoPath), password, {
             compression: nextConfig.compression,
             extraVerify: nextConfig.extraVerify,

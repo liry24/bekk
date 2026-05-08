@@ -133,18 +133,16 @@ export const initCmd = app
                 const initialized = await bekkCore.initializeRepository({
                     repoPath,
                     password: resolvedPassword,
-                    savePasswordInConfig,
                     forceReinit: sameConfiguredRepo,
                 })
                 if (initialized.initResult.status === 'error')
                     throw new Error(initialized.initResult.message)
                 await configStore.write(initialized.nextConfig)
+                await setRepoPassword(resolvedPassword, { saveToConfig: savePasswordInConfig })
                 initOk = true
             },
         })
-
         if (!initOk) return
-        await setRepoPassword(resolvedPassword)
 
         console.log()
         consola.success(green(bold('Backup setup complete')))

@@ -38,9 +38,7 @@ export const restoreCmd = app
 
             const password = await resolveRepoPassword()
             if (!password) {
-                consola.error(
-                    'Backup password is not stored. Run `bekk init` or set BEKK_REPO_PASSWORD.',
-                )
+                consola.error('Backup password is not stored. Run `bekk config`.')
                 process.exit(1)
             }
 
