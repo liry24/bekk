@@ -77,11 +77,10 @@ export const initCmd = app
         let wasGenerated = false
 
         if (enteredPassword.trim()) {
-            const confirmed = await password({
+            await password({
                 message: 'Confirm backup password',
                 validate: (v) => (v === enteredPassword ? true : 'Passwords do not match'),
             })
-            void confirmed
             resolvedPassword = enteredPassword
         } else {
             resolvedPassword = generatePassword()

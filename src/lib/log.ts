@@ -31,14 +31,13 @@ export const cliLog = (
     const logger = createConsola({ formatOptions: { date: timestamp } })
     const logFn = logger[type]
 
-    if (padding?.side === 'top' || padding?.side === 'both')
-        for (let i = 0; i < (padding?.lines || 1); i++) console.log()
+    const pad = padding?.lines || 1
+    if (padding?.side === 'top' || padding?.side === 'both') console.log('\n'.repeat(pad))
 
     if (typeof messages === 'boolean' || messages === null || messages === undefined) return
     else if (Array.isArray(messages)) messages.map((msg) => logFn(msg))
     else if (typeof messages === 'string') logFn(messages)
     else logger[messages.type || 'log'](messages.message)
 
-    if (padding?.side === 'bottom' || padding?.side === 'both')
-        for (let i = 0; i < (padding?.lines || 1); i++) console.log()
+    if (padding?.side === 'bottom' || padding?.side === 'both') console.log('\n'.repeat(pad))
 }

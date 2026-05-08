@@ -285,6 +285,9 @@ const configureAdvanced = async () => {
     let action: AdvancedAction
 
     do {
+        const parsedProviders = destr<Record<string, Record<string, unknown>>>(
+            cfg.providerConfigsJson,
+        )
         action = await select<AdvancedAction>({
             message: 'Advanced settings',
             choices: [
@@ -293,9 +296,7 @@ const configureAdvanced = async () => {
                     value: 'apps',
                     hint:
                         (
-                            destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)[
-                                'winget'
-                            ]?.['includeSources'] as string[] | undefined
+                            parsedProviders['winget']?.['includeSources'] as string[] | undefined
                         )?.join(', ') || 'none',
                 },
                 {
