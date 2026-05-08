@@ -33,14 +33,12 @@ export const restoreCmd = app
             const cfg = await configStore.read()
 
             if (!cfg.repoPath) {
-                consola.error('Backup destination is not configured. Run `bekk init` first.')
-                process.exit(1)
+                throw new Error('Backup destination is not configured. Run `bekk init` first.')
             }
 
             const password = await resolveRepoPassword()
             if (!password) {
-                consola.error('Backup password is not stored. Run `bekk config`.')
-                process.exit(1)
+                throw new Error('Backup password is not stored. Run `bekk config`.')
             }
 
             const target =

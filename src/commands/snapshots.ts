@@ -27,22 +27,18 @@ export const snapshotsCmd = app
         const cfg = await configStore.read()
 
         if (!cfg.repoPath) {
-            consola.error('Repository is not configured. Run `bekk init` first.')
-            process.exit(1)
+            throw new Error('Repository is not configured. Run `bekk init` first.')
         }
 
         const password = await resolveRepoPassword()
         if (!password) {
-            consola.error('Repository password is not stored. Run `bekk config`.')
-            process.exit(1)
+            throw new Error('Repository password is not stored. Run `bekk config`.')
         }
 
         const result = await bekkCore.snapshots(cfg.repoPath, password)
 
         if (result.status === 'error') {
-            consola.error(red('Failed to list snapshots: ') + result.message)
-            process.exitCode = 1
-            return
+            throw new Error(red('Failed to list snapshots: ') + result.message)
         }
 
         const snaps: SnapshotEntry[] = 'data' in result ? result.data : []

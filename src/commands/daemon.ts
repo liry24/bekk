@@ -74,17 +74,15 @@ export const daemonCmd = app
         const logPath = join(dataDir('bekk'), 'daemon.log')
 
         if (!cfg.cronSchedule) {
-            consola.error(
+            throw new Error(
                 'No cron schedule configured. Run ' + cyan('bekk schedule register') + ' first.',
             )
-            process.exit(1)
         }
 
         // Validate schedule using Bun.cron.parse
         const next = Bun.cron.parse(cfg.cronSchedule)
         if (next === null) {
-            consola.error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
-            process.exit(1)
+            throw new Error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
         }
 
         cliLog({
