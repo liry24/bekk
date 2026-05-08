@@ -103,6 +103,37 @@ export const initCmd = app
             inactive: 'No  (OS credential manager only — recommended)',
         })
 
+        // ── Step 2c: Snapshot retention limit ──────────────────────────────────
+        const snapshotLimitInput = await input({
+            message: `Snapshot retention limit  ${dim('(oldest snapshots are deleted)')}`,
+            default: '1',
+            validate: (v) => {
+                const n = Number(v)
+                return Number.isInteger(n) && n >= 1 ? true : 'Must be a positive integer (min 1)'
+            },
+        })
+        const snapshotLimit = Number(snapshotLimitInput)
+
+        // ── Step 2d: Backup Sources ────────────────────────────────────────────
+        console.log()
+        consola.info(dim('Enter source paths to back up (leave empty to finish):'))
+        const sourcePaths: string[] = []
+        while (true) {
+            const raw = await input({
+                message: 'Add source path',
+                placeholder: 'Leave empty to finish',
+            })
+            const trimmed = raw.trim()
+            if (!trimmed) break
+            const path = normalize(trimmed)
+            if (!sourcePaths.includes(path)) {
+                sourcePaths.push(path)
+                consola.success(green(`Added: ${bold(path)}`))
+            } else {
+                consola.info(dim('Already added.'))
+            }
+        }
+
         // ── Step 3: Initialize ─────────────────────────────────────────────────
         const normalizedRepo = normalize(repoPath)
         const sameConfiguredRepo = Boolean(
@@ -141,7 +172,7 @@ export const initCmd = app
                 })
                 if (initialized.initResult.status === 'error')
                     throw new Error(initialized.initResult.message)
-                await configStore.write(initialized.nextConfig)
+                await configStore.write({ ...initialized.nextConfig, snapshotLimit, sourcePaths })
                 await setRepoPassword(resolvedPassword, { saveToConfig: savePasswordInConfig })
                 initOk = true
             },
@@ -154,7 +185,9 @@ export const initCmd = app
         if (wasGenerated)
             cliLog({
                 messages: [
-                    [yellow(bold('Auto-generated backup password:')), cyan(bold(resolvedPassword))],
+                    yellow(bold('Auto-generated backup password:')) +
+                        ' ' +
+                        cyan(bold(resolvedPassword)),
                     dim('This password is stored in your OS credential manager.'),
                     dim('⚠  Keep a copy somewhere safe — it is required to restore backups.'),
                 ],
@@ -273,11 +306,11 @@ export const initCmd = app
 
         cliLog({
             messages: [
-                [dim('Add backup sources:  '), bold('bekk config')],
-                [dim('Run backup:          '), bold('bekk backup')],
+                dim('Manage sources:      ') + bold('bekk config'),
+                dim('Run backup:          ') + bold('bekk backup'),
                 gistEnabled
-                    ? [dim('Push to sync:        '), bold('bekk push')]
-                    : [dim('Set up Gist sync:    '), bold('bekk gist login')],
+                    ? dim('Push to sync:        ') + bold('bekk push')
+                    : dim('Set up Gist sync:    ') + bold('bekk gist login'),
             ],
             padding: { side: 'top' },
         })
