@@ -16,9 +16,18 @@ const REPO_PASSWORD_KEY = 'repo-password'
 const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
 
 export const generatePassword = (length = 32) => {
-    const bytes = new Uint8Array(length)
-    crypto.getRandomValues(bytes)
-    return Array.from(bytes, (b) => PASSWORD_CHARS[b % PASSWORD_CHARS.length]).join('')
+    const charsLength = PASSWORD_CHARS.length
+    const maxValid = 256 - (256 % charsLength)
+    const result: string[] = []
+    while (result.length < length) {
+        const byte = new Uint8Array(1)
+        crypto.getRandomValues(byte)
+        const b = byte[0]!
+        if (b < maxValid) {
+            result.push(PASSWORD_CHARS.charAt(b % charsLength))
+        }
+    }
+    return result.join('')
 }
 
 export const getRepoPassword = async () =>
