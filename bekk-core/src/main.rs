@@ -1,9 +1,10 @@
-use std::env;
+use std::{env, fs, io::ErrorKind};
 
 use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
 use clap::{Parser, Subcommand};
 use rustic_backend::BackendOptions;
+use rustic_core::repofile::KeyId;
 use rustic_core::{
     BackupOptions, ConfigOptions, Credentials, KeyOptions, LocalDestination, LsOptions, PathList,
     Repository, RepositoryOptions, RestoreOptions, SnapshotOptions,
@@ -25,6 +26,11 @@ enum Commands {
     Init {
         #[arg(long, help = "Path to the repository")]
         repo: String,
+        #[arg(
+            long,
+            help = "Delete existing local repository contents before initializing"
+        )]
+        force_reinit: bool,
         #[arg(
             long,
             default_value_t = 1,
@@ -66,6 +72,11 @@ enum Commands {
     },
     /// List snapshots in the repository
     Snapshots {
+        #[arg(long, help = "Path to the repository")]
+        repo: String,
+    },
+    /// Change the repository password (re-key)
+    ChangePassword {
         #[arg(long, help = "Path to the repository")]
         repo: String,
     },
@@ -117,11 +128,16 @@ fn build_config_opts(
 
 fn cmd_init(
     repo: &str,
+    force_reinit: bool,
     compression: i32,
     no_extra_verify: bool,
     pack_size: u64,
     chunk_size: u64,
 ) -> Result<Value> {
+    if force_reinit {
+        reset_local_repo_for_reinit(repo)?;
+    }
+
     let password = read_password()?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
@@ -130,6 +146,76 @@ fn cmd_init(
     let config_opts = build_config_opts(compression, no_extra_verify, pack_size, chunk_size);
 
     Repository::new(&repo_opts, &backends)?.init(&credentials, &key_opts, &config_opts)?;
+
+    Ok(json!({ "status": "ok" }))
+}
+
+fn local_repo_path(repo: &str) -> Option<&str> {
+    if let Some(path) = repo.strip_prefix("local:") {
+        return Some(path);
+    }
+
+    if repo.contains(':') {
+        return None;
+    }
+
+    Some(repo)
+}
+
+fn is_windows_drive_root(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || (bytes.len() == 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'/' || bytes[2] == b'\\'))
+}
+
+fn reset_local_repo_for_reinit(repo: &str) -> Result<()> {
+    let path = local_repo_path(repo)
+        .ok_or_else(|| anyhow!("--force-reinit is only supported for local repository paths"))?;
+
+    if path.is_empty() || path == "/" || is_windows_drive_root(path) {
+        return Err(anyhow!("Refusing to delete a root repository path"));
+    }
+
+    match fs::metadata(path) {
+        Ok(meta) => {
+            if meta.is_dir() {
+                fs::remove_dir_all(path)?;
+            } else {
+                fs::remove_file(path)?;
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(err.into()),
+    }
+
+    fs::create_dir_all(path)?;
+    Ok(())
+}
+
+fn read_new_password() -> Result<String> {
+    env::var("BEKK_NEW_PASSWORD")
+        .map_err(|_| anyhow!("BEKK_NEW_PASSWORD environment variable is not set"))
+}
+
+fn cmd_change_password(repo: &str) -> Result<Value> {
+    let old_password = read_password()?;
+    let new_password = read_new_password()?;
+    let backends = make_backends(repo)?;
+    let repo_opts = RepositoryOptions::default();
+    let old_credentials = Credentials::password(old_password);
+
+    let opened = Repository::new(&repo_opts, &backends)?.open(&old_credentials)?;
+    let old_key_id: Option<KeyId> = opened.key_id().clone();
+    opened.add_key(&new_password, &KeyOptions::default())?;
+    if let Some(kid) = old_key_id {
+        // Re-open with new credentials to authenticate the delete
+        let new_credentials = Credentials::password(new_password);
+        let reopened = Repository::new(&repo_opts, &backends)?.open(&new_credentials)?;
+        reopened.delete_key(&kid)?;
+    }
 
     Ok(json!({ "status": "ok" }))
 }
@@ -250,11 +336,19 @@ fn main() {
     let result = match cli.command {
         Commands::Init {
             repo,
+            force_reinit,
             compression,
             no_extra_verify,
             pack_size,
             chunk_size,
-        } => cmd_init(&repo, compression, no_extra_verify, pack_size, chunk_size),
+        } => cmd_init(
+            &repo,
+            force_reinit,
+            compression,
+            no_extra_verify,
+            pack_size,
+            chunk_size,
+        ),
         Commands::Backup {
             repo,
             sources,
@@ -268,6 +362,7 @@ fn main() {
             dry_run,
         } => cmd_restore(&repo, &snapshot, &target, dry_run),
         Commands::Snapshots { repo } => cmd_snapshots(&repo),
+        Commands::ChangePassword { repo } => cmd_change_password(&repo),
         Commands::ApplyConfig {
             repo,
             compression,
