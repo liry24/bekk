@@ -32,19 +32,17 @@ export const backupCmd = app
 
             if (!cfg.repoPath) {
                 consola.error('Backup destination is not configured. Run `bekk init` first.')
-                process.exit(1)
+                return
             }
-            if (cfg.sourcePaths.length === 0) {
+            if (!cfg.sourcePaths.length) {
                 consola.error('No source paths configured. Run `bekk config` to add source paths.')
-                process.exit(1)
+                return
             }
 
             const password = await resolveRepoPassword()
             if (!password) {
-                consola.error(
-                    'Backup password is not stored. Run `bekk init` or set BEKK_REPO_PASSWORD.',
-                )
-                process.exit(1)
+                consola.error('Backup password is not stored. Run `bekk config`.')
+                return
             }
 
             // App list backup
@@ -60,21 +58,21 @@ export const backupCmd = app
                         if (flags['dry-run']) {
                             const scoop = listScoop()
                             const winget = listWinget(cfg.wingetIncludeSources)
-                            if (scoop !== null) parts.push(`Scoop: ${scoop.length} apps`)
-                            parts.push(`Winget: ${winget.length} apps`)
+                            if (scoop !== null) parts.push(`Scoop: ${scoop.length}`)
+                            parts.push(`Winget: ${winget.length}`)
                         } else {
                             const { scoop, winget } = await backupApps(
                                 appListsDir,
                                 cfg.wingetIncludeSources,
                             )
-                            if (scoop !== null) parts.push(`Scoop: ${scoop.length} apps`)
-                            parts.push(`Winget: ${winget.length} apps`)
+                            if (scoop !== null) parts.push(`Scoop: ${scoop.length}`)
+                            parts.push(`Winget: ${winget.length}`)
                         }
                         summary = parts.join('  ')
                         updateMessage(
                             flags['dry-run']
-                                ? dim('[dry run] ') + `App list backup would save  —  ${summary}`
-                                : `App list backup complete  —  ${summary}`,
+                                ? dim('[dry run] ') + `App list backup would save: ${summary}`
+                                : `App list backup complete: ${dim(summary)}`,
                         )
                     },
                 })
@@ -94,9 +92,9 @@ export const backupCmd = app
                 await spinner({
                     message: `Backing up: ${label}`,
                     task: async ({ updateMessage }) => {
-                        if (flags['dry-run']) {
+                        if (flags['dry-run'])
                             updateMessage(`${dim('[dry run]')} Backing up: ${label}`)
-                        }
+
                         const result = await bekkCore.backup(
                             cfg.repoPath,
                             password,
@@ -104,25 +102,25 @@ export const backupCmd = app
                             flags['dry-run'],
                             flags.tag,
                         )
+
                         if (result.status === 'error') throw new Error(result.message)
                         if (result.status === 'ok' && 'data' in result && result.data) {
                             snapshotId = result.data.snapshot_id
-                            if (snapshotId) {
+                            if (snapshotId)
                                 updateMessage(
                                     green(bold('Backup complete')) +
                                         `  snapshot ${dim(snapshotId.slice(0, 8))}`,
                                 )
-                            } else if (flags['dry-run']) {
+                            else if (flags['dry-run'])
                                 updateMessage(green('[dry run] Backup simulation complete.'))
-                            }
                         }
                     },
                 })
             } catch (err) {
                 consola.error(
-                    red('Backup failed: ') + (err instanceof Error ? err.message : String(err)),
+                    red('Backup failed:'),
+                    err instanceof Error ? err.message : String(err),
                 )
-                process.exitCode = 1
                 return
             }
         }),
