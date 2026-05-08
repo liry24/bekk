@@ -5,7 +5,6 @@ import consola from 'consola'
 
 import { app } from '../app'
 import { bekkCore } from '../lib/bekk-core'
-import { normalizePath } from '../lib/pathUtils'
 import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '../lib/secrets'
 import type { S3Destination } from '../lib/sync'
 import { authStore, configStore } from '../store'
@@ -16,9 +15,20 @@ export const initCmd = app
     .run(async () => {
         const existing = await configStore.read()
         if (existing.repoPath) {
-            console.log(bold('Backup is already configured.'))
-            console.log(dim('Use `bekk config` to update the backup destination.'))
-            return
+            console.log(yellow(bold('Backup is already configured.')))
+            console.log(
+                dim('Running init again will walk through setup and reinitialize the repo.'),
+            )
+            console.log(dim(`Current repo: ${existing.repoPath}`))
+
+            const shouldReinitialize = await confirm({
+                message: 'Run init again and reinitialize the backup destination?',
+                default: false,
+                active: 'Yes  (run setup again)',
+                inactive: 'No  (cancel)',
+            })
+
+            if (!shouldReinitialize) return
         }
 
         // ── Step 1: Where to save backups ──────────────────────────────────────
@@ -90,35 +100,43 @@ export const initCmd = app
         })
 
         // ── Step 3: Initialize ─────────────────────────────────────────────────
-        const normalizedRepo = normalizePath(repoPath)
+        const normalizedRepo = bekkCore.normalizeRepoPath(repoPath)
+        const sameConfiguredRepo = Boolean(
+            existing.repoPath && normalizedRepo === existing.repoPath,
+        )
+
+        if (sameConfiguredRepo) {
+            console.log()
+            console.log(yellow(bold('Warning: the selected repo is already configured.')))
+            console.log(
+                dim(
+                    'Reinitializing the same repo directory will remove its current repository data.',
+                ),
+            )
+
+            const shouldReuseRepo = await confirm({
+                message: 'Continue and delete the current repo contents before reinitializing?',
+                default: false,
+                active: 'Yes  (delete and reinitialize)',
+                inactive: 'No  (cancel)',
+            })
+
+            if (!shouldReuseRepo) return
+        }
 
         let initOk = false
         await spinner({
             message: 'Setting up backup destination...',
             task: async () => {
-                // Write store first so perf fields get their defaults
-                await configStore.write({
-                    sourcePaths: [],
-                    repoPath: normalizedRepo,
-                    gistId: '',
-                    gistEnabled: false,
-                    s3DestinationsJson: '[]',
-                    wingetIncludeSources: ['winget', 'msstore'],
-                    cronSchedule: '',
-                    compression: 1,
-                    extraVerify: true,
-                    packSizeMib: 32,
-                    chunkSizeMib: 1,
-                    savedPassword: savePasswordInConfig ? resolvedPassword : '',
+                const initialized = await bekkCore.initializeRepository({
+                    repoPath,
+                    password: resolvedPassword,
+                    savePasswordInConfig,
+                    forceReinit: sameConfiguredRepo,
                 })
-                const cfg = await configStore.read()
-                const result = await bekkCore.init(normalizedRepo, resolvedPassword, {
-                    compression: cfg.compression,
-                    extraVerify: cfg.extraVerify,
-                    packSizeMib: cfg.packSizeMib,
-                    chunkSizeMib: cfg.chunkSizeMib,
-                })
-                if (result.status === 'error') throw new Error(result.message)
+                if (initialized.initResult.status === 'error')
+                    throw new Error(initialized.initResult.message)
+                await configStore.write(initialized.nextConfig)
                 initOk = true
             },
         })
