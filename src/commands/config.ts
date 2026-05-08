@@ -10,10 +10,12 @@ import {
 import { configDir } from '@crustjs/store'
 import { bold, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
+import { destr } from 'destr'
 import open from 'open'
 import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
+import { getAvailableProviders } from '#lib/apps'
 import { cliLog } from '#lib/log'
 import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
 
@@ -36,11 +38,21 @@ const showCmd = app
         if (cfg.sourcePaths.length !== 0) for (const p of cfg.sourcePaths) console.log('  ' + p)
         console.log()
 
-        const srcLabel =
-            cfg.wingetIncludeSources.length > 0
-                ? cfg.wingetIncludeSources.map((s) => (s === '' ? dim('(blank)') : s)).join(', ')
-                : dim('(none — winget apps will not be backed up)')
-        console.log(bold('App List Backup (winget sources):'), srcLabel)
+        const providers = getAvailableProviders()
+        if (providers.length > 0) {
+            const parsed = destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)
+            const wingetSources = parsed['winget']?.['includeSources'] as string[] | undefined
+            const srcLabel =
+                wingetSources && wingetSources.length > 0
+                    ? wingetSources.map((s) => (s === '' ? dim('(blank)') : s)).join(', ')
+                    : dim('(none — winget apps will not be backed up)')
+            console.log(bold('App List Backup (winget sources):'), srcLabel)
+        } else {
+            console.log(
+                bold('App List Backup:'),
+                dim('no package managers available for this platform yet'),
+            )
+        }
         console.log()
 
         console.log(bold('Compression:'), cfg.compression === 0 ? 'None' : String(cfg.compression))
@@ -216,19 +228,53 @@ const configureSources = async () => {
 }
 
 const configureApps = async () => {
+    const providers = getAvailableProviders()
+    if (providers.length === 0) {
+        consola.info('App list — no package managers available for macOS/Linux yet.')
+        return
+    }
+
     const cfg = await configStore.read()
+    const parsed = destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)
+    const currentSources = (parsed['winget']?.['includeSources'] as string[] | undefined) ?? [
+        'winget',
+        'msstore',
+    ]
+
+    const predefined = ['winget', 'msstore', '', 'unknown']
+    const customSources = currentSources.filter((s) => !predefined.includes(s))
+
+    const choices = [
+        { label: 'winget', value: 'winget', hint: 'community repository' },
+        { label: 'msstore', value: 'msstore', hint: 'Microsoft Store' },
+        { label: '(blank)', value: '', hint: 'sideloaded / custom installers' },
+        { label: 'unknown', value: 'unknown', hint: 'packages without a known source' },
+        ...customSources.map((s) => ({ label: s, value: s, hint: 'custom source' })),
+        { label: '+ Add custom source', value: '__add_custom__', hint: 'type your own' },
+    ]
 
     const chosen = await multiselect<string>({
         message: 'Winget sources to include in app list backup (Space to toggle)',
-        choices: [
-            { label: 'winget', value: 'winget', hint: 'community repository' },
-            { label: 'msstore', value: 'msstore', hint: 'Microsoft Store' },
-            { label: '(blank)', value: '', hint: 'sideloaded / custom installers' },
-        ],
-        default: cfg.wingetIncludeSources,
+        choices,
+        default: currentSources,
     })
 
-    await configStore.patch({ wingetIncludeSources: chosen })
+    let finalSources = chosen.filter((v) => v !== '__add_custom__')
+
+    if (chosen.includes('__add_custom__')) {
+        const custom = await input({
+            message: 'Custom source name',
+            validate: (v) => (v.trim() ? true : 'Source name is required'),
+        })
+        const trimmed = custom.trim()
+        if (trimmed && !finalSources.includes(trimmed)) {
+            finalSources.push(trimmed)
+        }
+    }
+
+    await configStore.patch({
+        providerConfigsJson: JSON.stringify({ winget: { includeSources: finalSources } }),
+    })
     consola.success(green('App backup settings saved.'))
 }
 
@@ -245,7 +291,12 @@ const configureAdvanced = async () => {
                 {
                     label: 'App list (winget)',
                     value: 'apps',
-                    hint: cfg.wingetIncludeSources.join(', ') || 'none',
+                    hint:
+                        (
+                            destr<Record<string, Record<string, unknown>>>(cfg.providerConfigsJson)[
+                                'winget'
+                            ]?.['includeSources'] as string[] | undefined
+                        )?.join(', ') || 'none',
                 },
                 {
                     label: 'Compression',
