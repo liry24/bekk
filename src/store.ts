@@ -64,6 +64,11 @@ export const configStore = createStore({
             default: 1,
             validate: fieldSync(z.number().int().positive()),
         },
+        snapshotLimit: {
+            type: 'number',
+            default: 1,
+            validate: fieldSync(z.number().int().positive().min(1)),
+        },
         savedPassword: {
             type: 'string',
             default: '',

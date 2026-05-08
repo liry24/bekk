@@ -5,7 +5,7 @@ import type { SyncBackend, SyncData } from '#lib/types'
 
 import { configStore } from '../../../store'
 import { resolveGistId } from '../../github'
-import { getConfigFileName } from '../../hosthash'
+import { getConfigFileName, getHostHash } from '../../hosthash'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -41,8 +41,14 @@ export const createGistBackend = (token: string): SyncBackend => {
             const cfg = await configStore.read()
             const fileName = await getConfigFileName()
 
-            const files: Record<string, { content: string }> = {
+            const files: Record<string, { content: string } | null> = {
                 [fileName]: { content: JSON.stringify(data.config, null, 2) },
+            }
+
+            // When updating an existing gist, delete the old filename to avoid duplicates.
+            // Note: the value must be `null` (not `{ content: null }`) for GitHub to delete the file.
+            if (cfg.gistId) {
+                files[`bekk_config_${getHostHash()}.json`] = null
             }
 
             for (const [providerId, apps] of Object.entries(data.appLists)) {
@@ -84,6 +90,7 @@ export const createGistBackend = (token: string): SyncBackend => {
             const preferredName = await getConfigFileName()
             const configEntry =
                 Object.entries(gist.files).find(([name]) => name === preferredName) ??
+                Object.entries(gist.files).find(([name]) => name.startsWith('_bekk_config_')) ??
                 Object.entries(gist.files).find(([name]) => name.startsWith('bekk_config_'))
 
             if (!configEntry) throw new Error(`No config file found in Gist: ${gistId}`)
@@ -121,6 +128,7 @@ export const createGistBackend = (token: string): SyncBackend => {
                     extraVerify: get('extraVerify', true, (v) => typeof v === 'boolean'),
                     packSizeMib: get('packSizeMib', 32, (v) => typeof v === 'number'),
                     chunkSizeMib: get('chunkSizeMib', 1, (v) => typeof v === 'number'),
+                    snapshotLimit: get('snapshotLimit', 1, (v) => typeof v === 'number'),
                     savedPassword: get('savedPassword', '', (v) => typeof v === 'string'),
                     providerConfigsJson: get(
                         'providerConfigsJson',

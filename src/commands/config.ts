@@ -8,7 +8,7 @@ import {
     spinner,
 } from '@crustjs/prompts'
 import { configDir } from '@crustjs/store'
-import { bold, dim, green, yellow } from '@crustjs/style'
+import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { destr } from 'destr'
 import open from 'open'
@@ -16,11 +16,19 @@ import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { getAvailableProviders } from '#lib/apps'
+import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
 import { cliLog } from '#lib/log'
-import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
+import {
+    changeRepoPassword,
+    deleteS3SecretAccessKey,
+    generatePassword,
+    resolveRepoPassword,
+    setS3SecretAccessKey,
+} from '#lib/secrets'
+import type { S3Destination } from '#lib/types'
 
 import { app } from '../app'
-import { configStore } from '../store'
+import { authStore, configStore } from '../store'
 
 // ─── config show ──────────────────────────────────────────────────────────────
 
@@ -59,6 +67,7 @@ const showCmd = app
         console.log(bold('Pack size:'), `${cfg.packSizeMib} MiB`)
         console.log(bold('Chunk size:'), `${cfg.chunkSizeMib} MiB`)
         console.log(bold('Extra verify:'), cfg.extraVerify ? 'Enabled' : 'Disabled')
+        console.log(bold('Snapshot limit:'), cfg.snapshotLimit)
         console.log()
 
         console.log(
@@ -67,7 +76,14 @@ const showCmd = app
         )
         console.log()
 
+        console.log(bold('GitHub Gist:'), cfg.gistEnabled ? green('Enabled') : dim('Disabled'))
         console.log(bold('GitHub Gist ID:'), cfg.gistId || dim('(not set)'))
+
+        const s3Destinations = destr<S3Destination[]>(cfg.s3DestinationsJson) ?? []
+        console.log(bold('S3 destinations:'), s3Destinations.length === 0 ? dim('(none)') : '')
+        for (const d of s3Destinations) {
+            console.log(`  ${d.name}  ${dim(`${d.bucket} (${d.region})`)}`)
+        }
     })
 
 // ─── config open ─────────────────────────────────────────────────────────────
@@ -204,7 +220,6 @@ const configureSources = async () => {
                 if (c.sourcePaths.includes(path)) return c
                 return { ...c, sourcePaths: [...c.sourcePaths, path] }
             })
-            consola.success(green(`Added: ${bold(path)}`))
         }
     } else {
         const fresh = await configStore.read()
@@ -281,7 +296,14 @@ const configureApps = async () => {
 const configureAdvanced = async () => {
     const cfg = await configStore.read()
 
-    type AdvancedAction = 'apps' | 'compression' | 'packSize' | 'chunkSize' | 'extraVerify' | 'back'
+    type AdvancedAction =
+        | 'apps'
+        | 'compression'
+        | 'packSize'
+        | 'chunkSize'
+        | 'extraVerify'
+        | 'snapshotLimit'
+        | 'back'
     let action: AdvancedAction
 
     do {
@@ -310,6 +332,11 @@ const configureAdvanced = async () => {
                     label: 'Extra verify',
                     value: 'extraVerify',
                     hint: cfg.extraVerify ? 'enabled' : 'disabled',
+                },
+                {
+                    label: 'Snapshot limit',
+                    value: 'snapshotLimit',
+                    hint: String(cfg.snapshotLimit),
                 },
                 { label: '← Back', value: 'back' },
             ],
@@ -383,10 +410,192 @@ const configureAdvanced = async () => {
             })
             await configStore.patch({ extraVerify: enabled })
             consola.success(green(`Extra verify ${enabled ? 'enabled' : 'disabled'}.`))
+        } else if (action === 'snapshotLimit') {
+            const raw = await input({
+                message: 'Snapshot retention limit',
+                default: String(fresh.snapshotLimit),
+                validate: (v) => {
+                    const n = Number(v)
+                    return Number.isInteger(n) && n >= 1
+                        ? true
+                        : 'Must be a positive integer (min 1)'
+                },
+            })
+            await configStore.patch({ snapshotLimit: Number(raw) })
+            consola.success(green(`Snapshot limit set to ${raw}.`))
         }
 
         // Reload hint values for the next loop iteration
         Object.assign(cfg, await configStore.read())
+    } while (action !== 'back')
+}
+
+const configureS3Destinations = async () => {
+    type S3Action = 'add' | 'remove' | 'back'
+    let action: S3Action
+
+    do {
+        const cfg = await configStore.read()
+        const destinations = destr<S3Destination[]>(cfg.s3DestinationsJson) ?? []
+
+        const choices: { label: string; value: S3Action; hint?: string }[] = []
+        for (const d of destinations) {
+            choices.push({
+                label: d.name,
+                value: 'back',
+                hint: `${d.bucket} (${d.region})`,
+            })
+        }
+        choices.push({ label: 'Add destination', value: 'add' })
+        if (destinations.length > 0) {
+            choices.push({ label: 'Remove destination', value: 'remove' })
+        }
+        choices.push({ label: '← Back', value: 'back' })
+
+        action = await select<S3Action>({
+            message: 'S3 destinations',
+            choices,
+        })
+
+        if (action === 'add') {
+            const defaultName = 's3'
+            const name = await input({
+                message: `  Name  ${dim('(used to identify this destination)')}`,
+                placeholder: defaultName,
+                validate: (v) => {
+                    if (!v.trim()) return 'Name is required'
+                    if (destinations.some((d) => d.name === v.trim()))
+                        return 'A destination with this name already exists'
+                    return true
+                },
+            })
+
+            const bucket = await input({
+                message: `  Bucket  ${dim('(S3 bucket name)')}`,
+                placeholder: name.trim(),
+                validate: (v) => (v.trim() ? true : 'Bucket is required'),
+            })
+
+            const endpoint = await input({
+                message: `  Endpoint  ${dim('(leave blank for AWS standard)')}`,
+                placeholder: 'e.g. https://accountid.r2.cloudflarestorage.com',
+            })
+
+            const region = await input({
+                message: `  Region`,
+                placeholder: 'us-east-1',
+            })
+
+            const accessKeyId = await input({
+                message: `  Access Key ID`,
+                validate: (v) => (v.trim() ? true : 'Access Key ID is required'),
+            })
+
+            const secretAccessKey = await password({
+                message: `  Secret Access Key`,
+                validate: (v) => (v.trim() ? true : 'Secret Access Key is required'),
+            })
+
+            const dest: S3Destination = {
+                name: name.trim(),
+                bucket: bucket.trim(),
+                region: region.trim() || 'us-east-1',
+                endpoint: endpoint.trim(),
+                accessKeyId: accessKeyId.trim(),
+            }
+            const updated = [...destinations, dest]
+            await configStore.patch({ s3DestinationsJson: JSON.stringify(updated) })
+            await setS3SecretAccessKey(dest.name, secretAccessKey)
+
+            cliLog({
+                messages: [green(`S3 destination ${cyan(bold(dest.name))} configured.`)],
+                type: 'success',
+            })
+        } else if (action === 'remove') {
+            if (destinations.length === 0) {
+                consola.info(dim('No S3 destinations configured.'))
+                continue
+            }
+            const toRemove = await multiselect<string>({
+                message: 'Select destinations to remove',
+                choices: destinations.map((d) => ({ label: d.name, value: d.name })),
+                default: [],
+            })
+            if (toRemove.length > 0) {
+                const updated = destinations.filter((d) => !toRemove.includes(d.name))
+                await configStore.patch({ s3DestinationsJson: JSON.stringify(updated) })
+                for (const name of toRemove) {
+                    await deleteS3SecretAccessKey(name)
+                }
+                consola.success(green(`Removed ${toRemove.length} destination(s).`))
+            }
+        }
+    } while (action !== 'back')
+}
+
+const configureSyncBackends = async () => {
+    type SyncAction = 'gist' | 's3' | 'back'
+    let action: SyncAction
+
+    do {
+        const cfg = await configStore.read()
+        const s3Destinations = destr<S3Destination[]>(cfg.s3DestinationsJson) ?? []
+        const { token } = await authStore.read()
+        const gistStatus =
+            cfg.gistEnabled && token
+                ? 'enabled'
+                : cfg.gistEnabled
+                  ? 'enabled (no token)'
+                  : 'disabled'
+
+        action = await select<SyncAction>({
+            message: 'Sync backends',
+            choices: [
+                {
+                    label: 'GitHub Gist',
+                    value: 'gist',
+                    hint: gistStatus,
+                },
+                {
+                    label: 'S3 destinations',
+                    value: 's3',
+                    hint: `${s3Destinations.length} configured`,
+                },
+                { label: '← Back', value: 'back' },
+            ],
+        })
+
+        if (action === 'gist') {
+            const { token } = await authStore.read()
+            const cfg = await configStore.read()
+            if (cfg.gistEnabled && token) {
+                const username = await getAuthenticatedUser(token)
+                const ok = await confirm({
+                    message: `Gist sync is enabled${username ? ` for ${bold(cyan(username))}` : ''}. Disable it?`,
+                    default: false,
+                })
+                if (ok) {
+                    await configStore.patch({ gistEnabled: false })
+                    consola.success(green('Gist sync disabled.'))
+                }
+            } else {
+                const ok = await confirm({
+                    message: 'Enable Gist sync?',
+                    default: true,
+                })
+                if (ok) {
+                    if (!token) {
+                        consola.info('Authentication required. Starting GitHub Device Flow...')
+                        const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
+                        await authStore.patch({ token: newToken })
+                    }
+                    await configStore.patch({ gistEnabled: true })
+                    consola.success(green('Gist sync enabled.'))
+                }
+            }
+        } else if (action === 's3') {
+            await configureS3Destinations()
+        }
     } while (action !== 'back')
 }
 
@@ -401,12 +610,24 @@ export const configCmd = app
         try {
             const cfg = await configStore.read()
 
-            type TopAction = 'destination' | 'sources' | 'password' | 'advanced' | 'done'
+            type TopAction =
+                | 'destination'
+                | 'sources'
+                | 'password'
+                | 'syncBackends'
+                | 'advanced'
+                | 'done'
             let action: TopAction
 
             do {
                 // Reload hints each iteration
                 Object.assign(cfg, await configStore.read())
+
+                const s3Count = destr<S3Destination[]>(cfg.s3DestinationsJson).length ?? 0
+                const syncHint =
+                    cfg.gistEnabled || s3Count > 0
+                        ? `${cfg.gistEnabled ? 'Gist' : ''}${cfg.gistEnabled && s3Count > 0 ? ', ' : ''}${s3Count > 0 ? `${s3Count} S3` : ''}`
+                        : 'not set'
 
                 action = await select<TopAction>({
                     message: 'What do you want to configure?',
@@ -430,6 +651,11 @@ export const configCmd = app
                             hint: cfg.savedPassword ? 'saved in config' : 'OS keychain only',
                         },
                         {
+                            label: 'Sync backends ▶',
+                            value: 'syncBackends',
+                            hint: syncHint,
+                        },
+                        {
                             label: 'Advanced ▶',
                             value: 'advanced',
                         },
@@ -446,6 +672,8 @@ export const configCmd = app
                     await configureSources()
                 } else if (action === 'password') {
                     await changePassword()
+                } else if (action === 'syncBackends') {
+                    await configureSyncBackends()
                 } else if (action === 'advanced') {
                     const before = await configStore.read()
                     await configureAdvanced()
@@ -454,7 +682,8 @@ export const configCmd = app
                         before.compression !== after.compression ||
                         before.extraVerify !== after.extraVerify ||
                         before.packSizeMib !== after.packSizeMib ||
-                        before.chunkSizeMib !== after.chunkSizeMib
+                        before.chunkSizeMib !== after.chunkSizeMib ||
+                        before.snapshotLimit !== after.snapshotLimit
 
                     if (advancedChanged && after.repoPath) {
                         const { resolveRepoPassword } = await import('../lib/secrets')
