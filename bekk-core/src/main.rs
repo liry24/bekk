@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind};
+use std::{fs, io::ErrorKind};
 
 use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
@@ -103,15 +103,15 @@ enum Commands {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn read_password(stdin: bool, env_var: &str) -> Result<String> {
-    if stdin {
-        let mut password = String::new();
-        std::io::stdin().read_line(&mut password)?;
-        Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
-    } else {
-        env::var(env_var)
-            .map_err(|_| anyhow!("{env_var} environment variable is not set"))
+fn read_password(stdin: bool) -> Result<String> {
+    if !stdin {
+        return Err(anyhow!(
+            "Password must be provided via stdin (use --password-stdin)"
+        ));
     }
+    let mut password = String::new();
+    std::io::stdin().read_line(&mut password)?;
+    Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
 }
 
 fn make_backends(repo: &str) -> Result<rustic_core::RepositoryBackends> {
@@ -166,7 +166,7 @@ fn cmd_init(
         reset_local_repo_for_reinit(repo)?;
     }
 
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -224,8 +224,8 @@ fn reset_local_repo_for_reinit(repo: &str) -> Result<()> {
 }
 
 fn cmd_change_password(repo: &str, password_stdin: bool) -> Result<Value> {
-    let old_password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
-    let new_password = read_password(password_stdin, "BEKK_NEW_PASSWORD")?;
+    let old_password = read_password(password_stdin)?;
+    let new_password = read_password(password_stdin)?;
 
     if old_password == new_password {
         return Err(anyhow!(
@@ -257,7 +257,7 @@ fn cmd_apply_config(
     chunk_size: u64,
     password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
     let config_opts = build_config_opts(compression, no_extra_verify, pack_size, chunk_size);
 
     let mut repo = open_repo(repo, &password)?;
@@ -273,7 +273,7 @@ fn cmd_backup(
     tag: Option<&str>,
     password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
     let repo = open_repo(repo, &password)?.to_indexed_ids()?;
 
@@ -302,7 +302,7 @@ fn cmd_restore(
     dry_run: bool,
     password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
     let repo = open_repo(repo, &password)?.to_indexed()?;
 
@@ -322,7 +322,7 @@ fn cmd_restore(
 }
 
 fn cmd_snapshots(repo: &str, password_stdin: bool) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
     let repo = open_repo(repo, &password)?;
     let mut snaps = repo.get_all_snapshots()?;
