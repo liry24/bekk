@@ -1,5 +1,6 @@
 import { destr } from 'destr'
 
+import { commandExists } from '#lib/shell'
 import type { App, PackageProvider } from '#lib/types'
 
 import { configStore } from '../../../store'
@@ -21,21 +22,7 @@ export const wingetProvider: PackageProvider = {
     id: 'winget',
     name: 'Winget',
     platforms: ['win32'],
-
-    isAvailable: () => {
-        if (process.platform !== 'win32') return false
-        const result = Bun.spawnSync(
-            [
-                'powershell.exe',
-                '-NoProfile',
-                '-NonInteractive',
-                '-Command',
-                'Get-Command winget -ErrorAction SilentlyContinue',
-            ],
-            { stderr: 'ignore' },
-        )
-        return result.exitCode === 0
-    },
+    isAvailable: () => commandExists('winget'),
 
     list: async () => {
         const raw = listWinget(await getWingetSources())

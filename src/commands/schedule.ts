@@ -8,6 +8,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { isAdmin } from '#lib/platform'
+import { exec } from '#lib/spawn'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -23,34 +24,31 @@ const getBinaryPath = () => process.execPath
 const registerWindows = (exePath: string, admin: boolean) => {
     const trigger = admin ? '/sc onstart' : '/sc onlogon'
     const ruParam = admin ? '/ru SYSTEM' : ''
-    const args = [
-        'schtasks',
-        '/create',
-        '/tn',
-        TASK_NAME,
-        '/tr',
-        `"${exePath}" daemon`,
-        ...trigger.split(' '),
-        ...(ruParam ? ruParam.split(' ') : []),
-        '/f',
-    ]
-    const result = Bun.spawnSync(args, { stdout: 'pipe', stderr: 'pipe' })
-    if (result.exitCode !== 0) {
-        const err = new TextDecoder().decode(result.stderr).trim()
-        throw new Error(`schtasks failed: ${err}`)
+    try {
+        exec([
+            'schtasks',
+            '/create',
+            '/tn',
+            TASK_NAME,
+            '/tr',
+            `"${exePath}" daemon`,
+            ...trigger.split(' '),
+            ...(ruParam ? ruParam.split(' ') : []),
+            '/f',
+        ])
+    } catch (err) {
+        throw new Error(`schtasks failed: ${err instanceof Error ? err.message : String(err)}`)
     }
 }
 
 const unregisterWindows = () => {
-    const result = Bun.spawnSync(['schtasks', '/delete', '/tn', TASK_NAME, '/f'], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-    })
-    if (result.exitCode !== 0) {
-        const err = new TextDecoder().decode(result.stderr).trim()
+    try {
+        exec(['schtasks', '/delete', '/tn', TASK_NAME, '/f'])
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
         // Treat "not found" as success
-        if (!err.includes('not found') && !err.includes('ERROR: The system cannot find'))
-            throw new Error(`schtasks failed: ${err}`)
+        if (!msg.includes('not found') && !msg.includes('ERROR: The system cannot find'))
+            throw new Error(`schtasks failed: ${msg}`)
     }
 }
 
@@ -92,18 +90,10 @@ const registerMacOS = async (exePath: string, admin: boolean) => {
     await Bun.write(plistPath, buildMacOSPlist(exePath, admin))
 
     if (admin) {
-        const r = Bun.spawnSync(['launchctl', 'load', plistPath], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-        })
-        if (r.exitCode !== 0) throw new Error(new TextDecoder().decode(r.stderr).trim())
+        exec(['launchctl', 'load', plistPath])
     } else {
         const uid = String(process.getuid?.() ?? 501)
-        const r = Bun.spawnSync(['launchctl', 'bootstrap', `gui/${uid}`, plistPath], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-        })
-        if (r.exitCode !== 0) throw new Error(new TextDecoder().decode(r.stderr).trim())
+        exec(['launchctl', 'bootstrap', `gui/${uid}`, plistPath])
     }
 }
 
@@ -111,21 +101,17 @@ const unregisterMacOS = async (admin: boolean) => {
     const plistPath = getMacOSPlistPath(admin)
     if (!(await Bun.file(plistPath).exists())) return
 
-    if (admin) Bun.spawnSync(['launchctl', 'unload', plistPath], { stdout: 'pipe', stderr: 'pipe' })
-    else {
+    if (admin) {
+        exec(['launchctl', 'unload', plistPath])
+    } else {
         const uid = String(process.getuid?.() ?? 501)
-        Bun.spawnSync(['launchctl', 'bootout', `gui/${uid}`, plistPath], {
-            stdout: 'pipe',
-            stderr: 'pipe',
-        })
+        exec(['launchctl', 'bootout', `gui/${uid}`, plistPath])
     }
-    await Bun.file(plistPath)
-        .text()
-        .then(() => {
-            // Remove the plist file via overwrite with empty (no delete API)
-            return Bun.spawnSync(['rm', '-f', plistPath], { stdout: 'pipe', stderr: 'pipe' })
-        })
-        .catch(() => {})
+    try {
+        exec(['rm', '-f', plistPath])
+    } catch {
+        // ignore
+    }
 }
 
 // Linux ────────────────────────────────────────────────────────────────────────
@@ -152,16 +138,16 @@ WantedBy=default.target
 const registerLinux = async (exePath: string, admin: boolean) => {
     const servicePath = getLinuxServicePath(admin)
     const serviceDir = servicePath.replace(/\/[^/]+$/, '')
-    Bun.spawnSync(['mkdir', '-p', serviceDir], { stdout: 'pipe', stderr: 'pipe' })
+    exec(['mkdir', '-p', serviceDir])
     await Bun.write(servicePath, buildLinuxUnit(exePath))
 
-    const systemctlArgs = admin
+    const args = admin
         ? ['systemctl', 'enable', '--now', 'bekk-daemon']
         : ['systemctl', '--user', 'enable', '--now', 'bekk-daemon']
-    const r = Bun.spawnSync(systemctlArgs, { stdout: 'pipe', stderr: 'pipe' })
-    if (r.exitCode !== 0) {
-        const err = new TextDecoder().decode(r.stderr).trim()
-        throw new Error(`systemctl failed: ${err}`)
+    try {
+        exec(args)
+    } catch (err) {
+        throw new Error(`systemctl failed: ${err instanceof Error ? err.message : String(err)}`)
     }
 }
 
@@ -169,10 +155,18 @@ const unregisterLinux = async (admin: boolean) => {
     const stopArgs = admin
         ? ['systemctl', 'disable', '--now', 'bekk-daemon']
         : ['systemctl', '--user', 'disable', '--now', 'bekk-daemon']
-    Bun.spawnSync(stopArgs, { stdout: 'pipe', stderr: 'pipe' })
+    try {
+        exec(stopArgs)
+    } catch {
+        // ignore stop errors
+    }
 
     const servicePath = getLinuxServicePath(admin)
-    Bun.spawnSync(['rm', '-f', servicePath], { stdout: 'pipe', stderr: 'pipe' })
+    try {
+        exec(['rm', '-f', servicePath])
+    } catch {
+        // ignore
+    }
 }
 
 // ─── schedule register ────────────────────────────────────────────────────────

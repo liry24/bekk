@@ -7,7 +7,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
-import { backupAllApps, getAvailableProviders } from '#lib/apps'
+import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib/apps'
 import { cliLog } from '#lib/log'
 import { resolveRepoPassword } from '#lib/secrets'
 
@@ -55,20 +55,17 @@ export const backupCmd = app
                         ? 'Scanning installed apps...'
                         : 'Saving app lists...',
                     task: async ({ updateMessage }) => {
-                        const parts: string[] = []
-                        if (flags['dry-run']) {
-                            const providers = getAvailableProviders()
-                            for (const p of providers) {
-                                const apps = await p.list()
-                                if (apps !== null) parts.push(`${p.name}: ${apps.length}`)
-                            }
-                        } else {
-                            const result = await backupAllApps(appListsDir)
-                            for (const [providerId, apps] of Object.entries(result)) {
-                                if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
-                            }
-                        }
-                        summary = parts.join('  ')
+                        const result = flags['dry-run']
+                            ? Object.fromEntries(
+                                  await Promise.all(
+                                      getAvailableProviders().map(async (p) => [
+                                          p.id,
+                                          await p.list(),
+                                      ]),
+                                  ),
+                              )
+                            : await backupAllApps(appListsDir)
+                        summary = formatAppListSummary(result)
                         updateMessage(
                             flags['dry-run']
                                 ? dim('[dry run] ') + `App list backup would save: ${summary}`

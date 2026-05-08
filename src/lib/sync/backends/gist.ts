@@ -27,6 +27,13 @@ interface GistResponse {
 export const createGistBackend = (token: string): SyncBackend => {
     const api = authedFetch(token)
 
+    const fetchFile = async (file: { content?: string; raw_url: string }) =>
+        file.content ??
+        ofetch<string>(file.raw_url, {
+            parseResponse: (txt) => txt,
+            headers: { Authorization: `token ${token}` },
+        })
+
     return {
         label: 'gist',
 
@@ -82,14 +89,11 @@ export const createGistBackend = (token: string): SyncBackend => {
             if (!configEntry) throw new Error(`No config file found in Gist: ${gistId}`)
             const [, configFile] = configEntry
 
-            const configContent =
-                configFile.content ??
-                (await ofetch<string>(configFile.raw_url, {
-                    parseResponse: (txt) => txt,
-                    headers: { Authorization: `token ${token}` },
-                }))
-
+            const configContent = await fetchFile(configFile)
             const parsedConfig = destr<Record<string, unknown>>(configContent)
+
+            const get = <T>(key: string, fallback: T, check: (v: unknown) => boolean) =>
+                check(parsedConfig[key]) ? (parsedConfig[key] as T) : fallback
 
             // Read app lists from Gist if present
             const appLists: Record<string, import('#lib/types').App[] | null> = {}
@@ -97,66 +101,32 @@ export const createGistBackend = (token: string): SyncBackend => {
             for (const [filename, file] of Object.entries(gist.files)) {
                 const match = filename.match(/^apps_(.+)\.json$/)
                 if (match && file) {
-                    const providerId = match[1]!
-                    const content =
-                        file.content ??
-                        (await ofetch<string>(file.raw_url, {
-                            parseResponse: (txt) => txt,
-                            headers: { Authorization: `token ${token}` },
-                        }))
-                    appLists[providerId] = destr(content) ?? null
+                    appLists[match[1]!] = destr(await fetchFile(file)) ?? null
                 }
             }
 
             return {
                 config: {
-                    sourcePaths: Array.isArray(parsedConfig['sourcePaths'])
-                        ? (parsedConfig['sourcePaths'] as string[])
-                        : [],
-                    repoPath:
-                        typeof parsedConfig['repoPath'] === 'string'
-                            ? parsedConfig['repoPath']
-                            : '',
-                    gistId:
-                        typeof parsedConfig['gistId'] === 'string'
-                            ? parsedConfig['gistId']
-                            : gistId,
-                    gistEnabled:
-                        typeof parsedConfig['gistEnabled'] === 'boolean'
-                            ? parsedConfig['gistEnabled']
-                            : false,
-                    s3DestinationsJson:
-                        typeof parsedConfig['s3DestinationsJson'] === 'string'
-                            ? parsedConfig['s3DestinationsJson']
-                            : '[]',
-                    cronSchedule:
-                        typeof parsedConfig['cronSchedule'] === 'string'
-                            ? parsedConfig['cronSchedule']
-                            : '',
-                    compression:
-                        typeof parsedConfig['compression'] === 'number'
-                            ? parsedConfig['compression']
-                            : 1,
-                    extraVerify:
-                        typeof parsedConfig['extraVerify'] === 'boolean'
-                            ? parsedConfig['extraVerify']
-                            : true,
-                    packSizeMib:
-                        typeof parsedConfig['packSizeMib'] === 'number'
-                            ? parsedConfig['packSizeMib']
-                            : 32,
-                    chunkSizeMib:
-                        typeof parsedConfig['chunkSizeMib'] === 'number'
-                            ? parsedConfig['chunkSizeMib']
-                            : 1,
-                    savedPassword:
-                        typeof parsedConfig['savedPassword'] === 'string'
-                            ? parsedConfig['savedPassword']
-                            : '',
-                    providerConfigsJson:
-                        typeof parsedConfig['providerConfigsJson'] === 'string'
-                            ? parsedConfig['providerConfigsJson']
-                            : '{}',
+                    sourcePaths: get('sourcePaths', [], Array.isArray),
+                    repoPath: get('repoPath', '', (v) => typeof v === 'string'),
+                    gistId: get('gistId', gistId, (v) => typeof v === 'string'),
+                    gistEnabled: get('gistEnabled', false, (v) => typeof v === 'boolean'),
+                    s3DestinationsJson: get(
+                        's3DestinationsJson',
+                        '[]',
+                        (v) => typeof v === 'string',
+                    ),
+                    cronSchedule: get('cronSchedule', '', (v) => typeof v === 'string'),
+                    compression: get('compression', 1, (v) => typeof v === 'number'),
+                    extraVerify: get('extraVerify', true, (v) => typeof v === 'boolean'),
+                    packSizeMib: get('packSizeMib', 32, (v) => typeof v === 'number'),
+                    chunkSizeMib: get('chunkSizeMib', 1, (v) => typeof v === 'number'),
+                    savedPassword: get('savedPassword', '', (v) => typeof v === 'string'),
+                    providerConfigsJson: get(
+                        'providerConfigsJson',
+                        '{}',
+                        (v) => typeof v === 'string',
+                    ),
                 },
                 appLists,
             }
