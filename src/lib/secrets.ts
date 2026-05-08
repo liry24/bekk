@@ -1,3 +1,5 @@
+import { bekkCore } from '#bekk-core'
+
 // NOTE: Bun.secrets is an experimental API (requires Bun >= 1.3.x).
 // It stores credentials using the OS native credential manager:
 //   Windows  → Windows Credential Manager
@@ -46,7 +48,6 @@ export const changeRepoPassword = async (
     oldPassword: string,
     newPassword: string,
 ) => {
-    const { bekkCore } = await import('#bekk-core')
     const result = await bekkCore.changePassword(repo, oldPassword, newPassword)
     if (result.status === 'error') throw new Error(result.message)
     await setRepoPassword(newPassword)
