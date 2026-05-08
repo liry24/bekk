@@ -186,7 +186,6 @@ export const pullGist = async (gistIdOrUrl: string, token?: string) => {
         (await ofetch<string>(selectedFile.raw_url, {
             parseResponse: (txt) => txt,
             headers: token ? { Authorization: `token ${token}` } : undefined,
-            responseType: 'json',
         }))
 
     const parsed = destr<Record<string, unknown>>(content)
