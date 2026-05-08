@@ -7,10 +7,10 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
+import { backupApps, listScoop, listWinget } from '#lib/apps'
+import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
-import { backupApps, listScoop, listWinget } from '../lib/apps'
-import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 export const backupCmd = app

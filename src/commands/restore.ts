@@ -6,9 +6,9 @@ import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
+import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
-import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 export const restoreCmd = app

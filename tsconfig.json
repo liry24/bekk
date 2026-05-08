@@ -14,7 +14,8 @@
         "noFallthroughCasesInSwitch": true,
         "noUncheckedIndexedAccess": true,
         "paths": {
-            "#bekk-core": ["./bekk-core/src"]
+            "#bekk-core": ["./bekk-core/src"],
+            "#lib/*": ["./src/lib/*"]
         }
     },
     "include": ["src", "bekk-core/src"]

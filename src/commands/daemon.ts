@@ -6,10 +6,10 @@ import consola from 'consola'
 import { join } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
+import { backupApps } from '#lib/apps'
+import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
-import { backupApps } from '../lib/apps'
-import { resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 // Append a log entry to the daemon log file

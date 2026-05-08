@@ -2,8 +2,9 @@ import { confirm } from '@crustjs/prompts'
 import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import { createConsola } from 'consola'
 
+import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+
 import { app } from '../app'
-import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '../lib/github'
 import { authStore, configStore } from '../store'
 
 const logger = createConsola({ formatOptions: { date: false } })

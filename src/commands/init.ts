@@ -5,10 +5,10 @@ import consola from 'consola'
 import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
+import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '#lib/secrets'
+import type { S3Destination } from '#lib/sync'
 
 import { app } from '../app'
-import { generatePassword, setRepoPassword, setS3SecretAccessKey } from '../lib/secrets'
-import type { S3Destination } from '../lib/sync'
 import { authStore, configStore } from '../store'
 
 export const initCmd = app

@@ -6,10 +6,11 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { backupApps } from '#lib/apps'
+import { getEnabledBackends } from '#lib/sync'
+import type { SyncData } from '#lib/sync'
+
 import { app } from '../app'
-import { backupApps } from '../lib/apps'
-import { getEnabledBackends } from '../lib/sync'
-import type { SyncData } from '../lib/sync'
 import { configStore } from '../store'
 
 export const pushCmd = app

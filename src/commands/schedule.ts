@@ -7,8 +7,9 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { isAdmin } from '#lib/admin'
+
 import { app } from '../app'
-import { isAdmin } from '../lib/admin'
 import { configStore } from '../store'
 
 const TASK_NAME = 'BekkDaemon'

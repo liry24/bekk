@@ -7,9 +7,10 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { getEnabledBackends } from '#lib/sync'
+import type { SyncData } from '#lib/sync'
+
 import { app } from '../app'
-import { getEnabledBackends } from '../lib/sync'
-import type { SyncData } from '../lib/sync'
 import { configStore } from '../store'
 
 export const pullCmd = app

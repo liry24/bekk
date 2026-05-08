@@ -13,10 +13,10 @@ import consola from 'consola'
 import open from 'open'
 
 import { bekkCore } from '#bekk-core'
+import { normalizePath } from '#lib/pathUtils'
+import { changeRepoPassword, generatePassword, resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
-import { normalizePath } from '../lib/pathUtils'
-import { changeRepoPassword, generatePassword, resolveRepoPassword } from '../lib/secrets'
 import { configStore } from '../store'
 
 // ─── config show ──────────────────────────────────────────────────────────────
