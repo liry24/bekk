@@ -296,13 +296,10 @@ fn cmd_restore(repo: &str, snapshot: &str, target: &str, dry_run: bool) -> Resul
     let ls_opts = LsOptions::default();
     let restore_opts = RestoreOptions::default();
 
-    let plan = {
-        let node_streamer = repo.ls(&node, &ls_opts)?;
-        repo.prepare_restore(&restore_opts, node_streamer, &dest, dry_run)?
-    };
+    let node_streamer = repo.ls(&node, &ls_opts)?;
+    let plan = repo.prepare_restore(&restore_opts, node_streamer.clone(), &dest, dry_run)?;
 
     if !dry_run {
-        let node_streamer = repo.ls(&node, &ls_opts)?;
         repo.restore(plan, &restore_opts, node_streamer, &dest)?;
     }
 
