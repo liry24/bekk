@@ -18,6 +18,8 @@ use serde_json::{Value, json};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    #[arg(long, help = "Read repository password from stdin")]
+    password_stdin: bool,
 }
 
 #[derive(Subcommand)]
@@ -101,9 +103,15 @@ enum Commands {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn read_password() -> Result<String> {
-    env::var("BEKK_REPO_PASSWORD")
-        .map_err(|_| anyhow!("BEKK_REPO_PASSWORD environment variable is not set"))
+fn read_password(stdin: bool) -> Result<String> {
+    if stdin {
+        let mut password = String::new();
+        std::io::stdin().read_line(&mut password)?;
+        Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
+    } else {
+        env::var("BEKK_REPO_PASSWORD")
+            .map_err(|_| anyhow!("BEKK_REPO_PASSWORD environment variable is not set"))
+    }
 }
 
 fn make_backends(repo: &str) -> Result<rustic_core::RepositoryBackends> {
@@ -133,12 +141,13 @@ fn cmd_init(
     no_extra_verify: bool,
     pack_size: u64,
     chunk_size: u64,
+    password_stdin: bool,
 ) -> Result<Value> {
     if force_reinit {
         reset_local_repo_for_reinit(repo)?;
     }
 
-    let password = read_password()?;
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -195,14 +204,20 @@ fn reset_local_repo_for_reinit(repo: &str) -> Result<()> {
     Ok(())
 }
 
-fn read_new_password() -> Result<String> {
-    env::var("BEKK_NEW_PASSWORD")
-        .map_err(|_| anyhow!("BEKK_NEW_PASSWORD environment variable is not set"))
+fn read_new_password(stdin: bool) -> Result<String> {
+    if stdin {
+        let mut password = String::new();
+        std::io::stdin().read_line(&mut password)?;
+        Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
+    } else {
+        env::var("BEKK_NEW_PASSWORD")
+            .map_err(|_| anyhow!("BEKK_NEW_PASSWORD environment variable is not set"))
+    }
 }
 
-fn cmd_change_password(repo: &str) -> Result<Value> {
-    let old_password = read_password()?;
-    let new_password = read_new_password()?;
+fn cmd_change_password(repo: &str, password_stdin: bool) -> Result<Value> {
+    let old_password = read_password(password_stdin)?;
+    let new_password = read_new_password(password_stdin)?;
 
     if old_password == new_password {
         return Err(anyhow!(
@@ -237,8 +252,9 @@ fn cmd_apply_config(
     no_extra_verify: bool,
     pack_size: u64,
     chunk_size: u64,
+    password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password()?;
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -250,8 +266,14 @@ fn cmd_apply_config(
     Ok(json!({ "status": "ok" }))
 }
 
-fn cmd_backup(repo: &str, sources: &[String], dry_run: bool, tag: Option<&str>) -> Result<Value> {
-    let password = read_password()?;
+fn cmd_backup(
+    repo: &str,
+    sources: &[String],
+    dry_run: bool,
+    tag: Option<&str>,
+    password_stdin: bool,
+) -> Result<Value> {
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -281,8 +303,14 @@ fn cmd_backup(repo: &str, sources: &[String], dry_run: bool, tag: Option<&str>) 
     }))
 }
 
-fn cmd_restore(repo: &str, snapshot: &str, target: &str, dry_run: bool) -> Result<Value> {
-    let password = read_password()?;
+fn cmd_restore(
+    repo: &str,
+    snapshot: &str,
+    target: &str,
+    dry_run: bool,
+    password_stdin: bool,
+) -> Result<Value> {
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -306,8 +334,8 @@ fn cmd_restore(repo: &str, snapshot: &str, target: &str, dry_run: bool) -> Resul
     Ok(json!({ "status": "ok" }))
 }
 
-fn cmd_snapshots(repo: &str) -> Result<Value> {
-    let password = read_password()?;
+fn cmd_snapshots(repo: &str, password_stdin: bool) -> Result<Value> {
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -356,28 +384,36 @@ fn main() {
             no_extra_verify,
             pack_size,
             chunk_size,
+            cli.password_stdin,
         ),
         Commands::Backup {
             repo,
             sources,
             dry_run,
             tag,
-        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref()),
+        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref(), cli.password_stdin),
         Commands::Restore {
             repo,
             snapshot,
             target,
             dry_run,
-        } => cmd_restore(&repo, &snapshot, &target, dry_run),
-        Commands::Snapshots { repo } => cmd_snapshots(&repo),
-        Commands::ChangePassword { repo } => cmd_change_password(&repo),
+        } => cmd_restore(&repo, &snapshot, &target, dry_run, cli.password_stdin),
+        Commands::Snapshots { repo } => cmd_snapshots(&repo, cli.password_stdin),
+        Commands::ChangePassword { repo } => cmd_change_password(&repo, cli.password_stdin),
         Commands::ApplyConfig {
             repo,
             compression,
             no_extra_verify,
             pack_size,
             chunk_size,
-        } => cmd_apply_config(&repo, compression, no_extra_verify, pack_size, chunk_size),
+        } => cmd_apply_config(
+            &repo,
+            compression,
+            no_extra_verify,
+            pack_size,
+            chunk_size,
+            cli.password_stdin,
+        ),
     };
 
     match result {

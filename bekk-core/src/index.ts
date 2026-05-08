@@ -45,14 +45,21 @@ export interface SnapshotEntry {
 
 const runBekkCore = async (
     args: string[],
-    env: Record<string, string> = {},
+    password?: string,
+    newPassword?: string,
 ): Promise<CoreResult> => {
     const bin = bekkCoreBin()
-    const proc = Bun.spawn([bin, ...args], {
+    const hasStdinPassword = password !== undefined
+    const proc = Bun.spawn([bin, ...(hasStdinPassword ? ['--password-stdin'] : []), ...args], {
         stdout: 'pipe',
         stderr: 'pipe',
-        env: { ...Bun.env, ...env } as Record<string, string>,
+        stdin: hasStdinPassword ? 'pipe' : 'inherit',
     })
+    if (hasStdinPassword && proc.stdin) {
+        proc.stdin.write(password + '\n')
+        if (newPassword) proc.stdin.write(newPassword + '\n')
+        proc.stdin.end()
+    }
     await proc.exited
     const stdout = await new Response(proc.stdout).text()
     if (!stdout.trim()) {
@@ -143,7 +150,7 @@ export const bekkCore = {
         ]
         if (!extraVerify) args.push('--no-extra-verify')
         if (forceReinit) args.push('--force-reinit')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        return runBekkCore(args, password)
     },
 
     async initializeRepository(
@@ -170,9 +177,7 @@ export const bekkCore = {
         ]
         if (dryRun) args.push('--dry-run')
         if (tag) args.push('--tag', tag)
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password }) as Promise<
-            CoreResult<BackupData>
-        >
+        return runBekkCore(args, password) as Promise<CoreResult<BackupData>>
     },
 
     restore(repo: string, password: string, target: string, snapshot = 'latest', dryRun = false) {
@@ -186,13 +191,13 @@ export const bekkCore = {
             target,
         ]
         if (dryRun) args.push('--dry-run')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        return runBekkCore(args, password)
     },
 
     snapshots(repo: string, password: string) {
-        return runBekkCore(['snapshots', '--repo', toRepoArg(repo)], {
-            BEKK_REPO_PASSWORD: password,
-        }) as Promise<CoreResult<SnapshotEntry[]>>
+        return runBekkCore(['snapshots', '--repo', toRepoArg(repo)], password) as Promise<
+            CoreResult<SnapshotEntry[]>
+        >
     },
 
     applyConfig(repo: string, password: string, perf: PerfOpts = {}) {
@@ -209,13 +214,10 @@ export const bekkCore = {
             String(chunkSizeMib),
         ]
         if (!extraVerify) args.push('--no-extra-verify')
-        return runBekkCore(args, { BEKK_REPO_PASSWORD: password })
+        return runBekkCore(args, password)
     },
 
     changePassword(repo: string, oldPassword: string, newPassword: string) {
-        return runBekkCore(['change-password', '--repo', toRepoArg(repo)], {
-            BEKK_REPO_PASSWORD: oldPassword,
-            BEKK_NEW_PASSWORD: newPassword,
-        })
+        return runBekkCore(['change-password', '--repo', toRepoArg(repo)], oldPassword, newPassword)
     },
 }
