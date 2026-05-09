@@ -73,36 +73,41 @@ export const backupCmd = app
                                 if (startedAt === 0) startedAt = Date.now()
                             } else if (ev.action === 'inc' && typeof ev.increment === 'number') {
                                 currentBytes += Math.max(0, Number(ev.increment))
+                                if (startedAt === 0) startedAt = Date.now()
                             }
                         }
 
-                        if (ev.action === 'set_title' && ev.title) {
-                            phaseTitle = ev.title
-                        }
+                        if (ev.action === 'set_title' && ev.title) phaseTitle = ev.title
 
                         let title = phaseTitle
-                        if (ev.phase === 'prep' && ev.action === 'finish') {
-                            title = 'Backing up...'
-                        }
+                        if (ev.phase === 'prep' && ev.action === 'finish') title = 'Backing up...'
 
                         const pct =
                             totalBytes > 0 ? Math.min(100, (currentBytes / totalBytes) * 100) : 0
 
                         const details: string[] = []
-                        if (totalBytes > 0 && currentBytes > 0 && startedAt > 0) {
+                        if (currentBytes > 0 && startedAt > 0) {
                             const elapsedMs = Date.now() - startedAt
                             const elapsedSec = elapsedMs / 1000
-                            const lineWidth = 2 + 40 + 1 + 6
-                            const sizeStr = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`
-                            details.push(padStart(sizeStr, lineWidth))
                             const speed = currentBytes / elapsedSec
-                            details.push(padStart(`${formatBytes(speed)}/s`, lineWidth))
-                            const remaining = totalBytes - currentBytes
-                            const eta = remaining / speed
-                            const etaStr = formatDuration(eta)
-                            if (etaStr !== '--:--') {
-                                details.push(padStart(`ETA ${etaStr}`, lineWidth))
-                            }
+                            const lineWidth = 2 + 40 + 1 + 6
+                            const labelWidth = 7
+                            const valueWidth = lineWidth - labelWidth
+
+                            const sizeValue =
+                                totalBytes > 0
+                                    ? `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`
+                                    : `${formatBytes(currentBytes)} / ${dim('(calculating)')} B`
+                            details.push(`Size:  ${padStart(sizeValue, valueWidth)}`)
+                            details.push(
+                                `Speed: ${padStart(`${formatBytes(speed)}/s`, valueWidth)}`,
+                            )
+
+                            const etaValue =
+                                totalBytes > 0
+                                    ? formatDuration((totalBytes - currentBytes) / speed)
+                                    : dim('(calculating)')
+                            details.push(`ETA:   ${padStart(etaValue, valueWidth)}`)
                         }
 
                         progress.update({
