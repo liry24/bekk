@@ -6,7 +6,7 @@ import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
-import { cliLog } from '#lib/log'
+import { fmtErr } from '#lib/error'
 import { resolveRepoPassword } from '#lib/secrets'
 
 import { app } from '../app'
@@ -69,18 +69,12 @@ export const restoreCmd = app
                 })
 
                 if (flags['dry-run']) {
-                    cliLog({
-                        messages: green('[dry run] Restore simulation complete.'),
-                        type: 'success',
-                    })
+                    consola.success(green('[dry run] Restore simulation complete.'))
                 } else {
-                    cliLog({
-                        messages: green(bold('Restore complete')) + `  → ${dim(target)}`,
-                        type: 'success',
-                    })
+                    consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
                 }
             } catch (err) {
-                const message = err instanceof Error ? err.message : String(err)
+                const message = fmtErr(err)
                 if (/No snapshots found/i.test(message)) {
                     consola.error(red('Restore failed:'), 'No snapshots found in this repository.')
                     consola.info(dim('Run `bekk backup` first, then retry `bekk restore`.'))

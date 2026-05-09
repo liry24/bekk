@@ -1,13 +1,14 @@
 import { spinner } from '@crustjs/progress'
 import { select } from '@crustjs/prompts'
-import { dataDir } from '@crustjs/store'
 import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
-import { getEnabledBackends } from '#lib/sync'
+import { fmtErr } from '#lib/error'
+import { getAppListsDir } from '#lib/paths'
+import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
 
 import { app } from '../app'
@@ -87,7 +88,7 @@ export const pullCmd = app
                 await configStore.write(syncData.config)
 
                 // Write app lists locally
-                const appListsDir = join(dataDir('bekk'), 'app-lists')
+                const appListsDir = getAppListsDir()
                 for (const [providerId, apps] of Object.entries(syncData.appLists)) {
                     if (apps !== null) {
                         await Bun.write(
@@ -97,14 +98,11 @@ export const pullCmd = app
                     }
                 }
             } catch (err) {
-                consola.error(
-                    red(`Pull from ${backend.label} failed: `) +
-                        (err instanceof Error ? err.message : String(err)),
-                )
+                consola.error(red(`Pull from ${backend.label} failed: `) + fmtErr(err))
                 process.exitCode = 1
                 return
             }
 
-            consola.log(dim('  Run `bekk config show` to verify the loaded settings.'))
+            console.log(dim('  Run `bekk config show` to verify the loaded settings.'))
         }),
     )

@@ -16,12 +16,12 @@ import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { getAvailableProviders } from '#lib/apps'
+import { fmtErr } from '#lib/error'
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
-import { cliLog } from '#lib/log'
 import {
     changeRepoPassword,
     deleteS3SecretAccessKey,
-    generatePassword,
+    promptPassword,
     resolveRepoPassword,
     setS3SecretAccessKey,
 } from '#lib/secrets'
@@ -97,8 +97,8 @@ const openCmd = app
             const dir = configDir('bekk')
             console.log(green('Opening config directory:'), dim(dir))
             await open(dir, { wait: true })
-        } catch {
-            consola.error('An error occurred while trying to open the config directory.')
+        } catch (err) {
+            consola.error('Failed to open config directory:', fmtErr(err))
         }
     })
 
@@ -118,23 +118,7 @@ const changePassword = async () => {
         return
     }
 
-    const entered = await password({
-        message: 'New backup password  (press Enter to auto-generate)',
-    })
-
-    let newPassword: string
-    let wasGenerated = false
-
-    if (entered.trim()) {
-        await password({
-            message: 'Confirm new password',
-            validate: (v) => (v === entered ? true : 'Passwords do not match'),
-        })
-        newPassword = entered
-    } else {
-        newPassword = generatePassword()
-        wasGenerated = true
-    }
+    const { password: newPassword, wasGenerated } = await promptPassword(password)
 
     const saveInConfig = await confirm({
         message: 'Save password to config file?',
@@ -146,32 +130,21 @@ const changePassword = async () => {
     await spinner({
         message: 'Updating repository encryption key…',
         task: async ({ updateMessage }) => {
-            try {
-                await changeRepoPassword({
-                    repo: repoPath!,
-                    oldPassword,
-                    newPassword,
-                    saveToConfig: saveInConfig,
-                })
-                updateMessage(green('Repository encryption key updated.'))
-            } catch (err) {
-                throw new Error(
-                    'Failed to re-key repository: ' +
-                        (err instanceof Error ? err.message : String(err)),
-                )
-            }
+            await changeRepoPassword({
+                repo: repoPath,
+                oldPassword,
+                newPassword,
+                saveToConfig: saveInConfig,
+            })
+            updateMessage(green('Repository encryption key updated.'))
         },
     })
 
     if (wasGenerated) {
-        cliLog({
-            messages: [
-                yellow(bold('New auto-generated password:')),
-                '  ' + bold(newPassword),
-                dim('  Keep this safe — it is required to restore your backups.'),
-            ],
-            padding: { side: 'top' },
-        })
+        console.log()
+        console.log(yellow(bold('New auto-generated password:')))
+        console.log('  ' + bold(newPassword))
+        console.log(dim('  Keep this safe — it is required to restore your backups.'))
     }
     consola.success(green('Password updated.'))
 }
@@ -430,7 +403,7 @@ const configureAdvanced = async () => {
     } while (action !== 'back')
 }
 
-const configureS3Destinations = async () => {
+export const configureS3Destinations = async () => {
     type S3Action = 'add' | 'remove' | 'back'
     let action: S3Action
 
@@ -507,10 +480,7 @@ const configureS3Destinations = async () => {
             await configStore.patch({ s3DestinationsJson: JSON.stringify(updated) })
             await setS3SecretAccessKey(dest.name, secretAccessKey)
 
-            cliLog({
-                messages: [green(`S3 destination ${cyan(bold(dest.name))} configured.`)],
-                type: 'success',
-            })
+            consola.success(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
         } else if (action === 'remove') {
             if (destinations.length === 0) {
                 consola.info(dim('No S3 destinations configured.'))
@@ -623,7 +593,8 @@ export const configCmd = app
                 // Reload hints each iteration
                 Object.assign(cfg, await configStore.read())
 
-                const s3Count = destr<S3Destination[]>(cfg.s3DestinationsJson).length ?? 0
+                const s3Destinations = destr<S3Destination[]>(cfg.s3DestinationsJson)
+                const s3Count = Array.isArray(s3Destinations) ? s3Destinations.length : 0
                 const syncHint =
                     cfg.gistEnabled || s3Count > 0
                         ? `${cfg.gistEnabled ? 'Gist' : ''}${cfg.gistEnabled && s3Count > 0 ? ', ' : ''}${s3Count > 0 ? `${s3Count} S3` : ''}`

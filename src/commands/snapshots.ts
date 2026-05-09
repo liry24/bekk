@@ -9,13 +9,7 @@ import { resolveRepoPassword } from '#lib/secrets'
 import { app } from '../app'
 import { configStore } from '../store'
 
-const formatTime = (isoStr: string) => {
-    try {
-        return new Date(isoStr).toLocaleString()
-    } catch {
-        return isoStr
-    }
-}
+const formatTime = (isoStr: string) => new Date(isoStr).toLocaleString()
 
 export const snapshotsCmd = app
     .sub('snapshots')

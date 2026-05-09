@@ -39,7 +39,7 @@ export const createGistBackend = (token: string): SyncBackend => {
 
         async push(data: SyncData): Promise<string> {
             const cfg = await configStore.read()
-            const fileName = await getConfigFileName()
+            const fileName = getConfigFileName()
 
             const files: Record<string, { content: string } | null> = {
                 [fileName]: { content: JSON.stringify(data.config, null, 2) },
@@ -87,7 +87,7 @@ export const createGistBackend = (token: string): SyncBackend => {
                 files: Record<string, { content?: string; raw_url: string }>
             }>(`/gists/${gistId}`)
 
-            const preferredName = await getConfigFileName()
+            const preferredName = getConfigFileName()
             const configEntry =
                 Object.entries(gist.files).find(([name]) => name === preferredName) ??
                 Object.entries(gist.files).find(([name]) => name.startsWith('_bekk_config_')) ??

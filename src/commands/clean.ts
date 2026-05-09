@@ -34,13 +34,13 @@ export const cleanCmd = app
             const cfg = await configStore.read()
 
             if (!cfg.repoPath) {
-                console.error(red('Backup destination is not configured. Run `bekk init` first.'))
+                consola.error(red('Backup destination is not configured. Run `bekk init` first.'))
                 return
             }
 
             const password = await resolveRepoPassword()
             if (!password) {
-                console.error(red('Backup password is not stored. Run `bekk config`.'))
+                consola.error(red('Backup password is not stored. Run `bekk config`.'))
                 return
             }
 
@@ -89,7 +89,7 @@ export const cleanCmd = app
                 taskList.update(checkTask, 'error')
                 taskList.update(repairTask, 'error')
                 taskList.finish()
-                console.error(red('Clean failed:'), result!.message)
+                consola.error(red('Clean failed:'), result!.message)
                 return
             }
 

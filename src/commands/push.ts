@@ -1,13 +1,13 @@
 import { spinner } from '@crustjs/progress'
-import { dataDir } from '@crustjs/store'
 import { bold, dim, green, link, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
-import { join } from 'pathe'
 import { z } from 'zod'
 
 import { backupAllApps } from '#lib/apps'
-import { getEnabledBackends } from '#lib/sync'
+import { fmtErr } from '#lib/error'
+import { getAppListsDir } from '#lib/paths'
+import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
 
 import { app } from '../app'
@@ -30,7 +30,7 @@ export const pushCmd = app
             const cfg = await configStore.read()
 
             // Collect current app lists
-            const appListsDir = join(dataDir('bekk'), 'app-lists')
+            const appListsDir = getAppListsDir()
             let syncData: SyncData | null = null
 
             await spinner({
@@ -82,10 +82,7 @@ export const pushCmd = app
                         },
                     })
                 } catch (err) {
-                    consola.error(
-                        red(`Push to ${backend.label} failed: `) +
-                            (err instanceof Error ? err.message : String(err)),
-                    )
+                    consola.error(red(`Push to ${backend.label} failed: `) + fmtErr(err))
                     anyFailed = true
                 }
             }

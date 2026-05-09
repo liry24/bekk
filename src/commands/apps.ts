@@ -1,5 +1,4 @@
 import { multiselect } from '@crustjs/prompts'
-import { dataDir } from '@crustjs/store'
 import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
@@ -9,12 +8,13 @@ import { z } from 'zod'
 
 import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib/apps'
 import { analyzeApps, installApps } from '#lib/apps/restore'
+import { getAppListsDir } from '#lib/paths'
 import type { App } from '#lib/types'
 import { createTaskList, drawPanel } from '#lib/ui'
 
 import { app } from '../app'
 
-const appListsDir = () => join(dataDir('bekk'), 'app-lists')
+const appListsDir = getAppListsDir
 
 const loadBackupAppLists = async (): Promise<Record<string, App[] | null>> => {
     const dir = appListsDir()
