@@ -48,7 +48,11 @@ export const createGistBackend = (token: string): SyncBackend => {
             // When updating an existing gist, delete the old filename to avoid duplicates.
             // Note: the value must be `null` (not `{ content: null }`) for GitHub to delete the file.
             if (cfg.gistId) {
-                files[`bekk_config_${getHostHash()}.json`] = null
+                const existingGist = await api<GistResponse>(`/gists/${cfg.gistId}`)
+                const oldFileName = `bekk_config_${getHostHash()}.json`
+                if (oldFileName in existingGist.files) {
+                    files[oldFileName] = null
+                }
             }
 
             for (const [providerId, apps] of Object.entries(data.appLists)) {
