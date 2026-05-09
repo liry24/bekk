@@ -16,6 +16,7 @@ import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { getAvailableProviders } from '#lib/apps'
+import { unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
 import {
@@ -661,12 +662,14 @@ export const configCmd = app
                         const pw = await resolveRepoPassword()
                         if (pw) {
                             consola.info(dim('Applying config to repository...'))
-                            await bekkCore.applyConfig(after.repoPath, pw, {
-                                compression: after.compression,
-                                extraVerify: after.extraVerify,
-                                packSizeMib: after.packSizeMib,
-                                chunkSizeMib: after.chunkSizeMib,
-                            })
+                            unwrapCoreResult(
+                                await bekkCore.applyConfig(after.repoPath, pw, {
+                                    compression: after.compression,
+                                    extraVerify: after.extraVerify,
+                                    packSizeMib: after.packSizeMib,
+                                    chunkSizeMib: after.chunkSizeMib,
+                                }),
+                            )
                             consola.success(green('Repository config updated.'))
                         }
                     }
