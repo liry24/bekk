@@ -2,11 +2,11 @@ import type { ConfigStore as _ConfigStore } from '../store'
 
 export type { ConfigStore } from '../store'
 
-export interface App<T = Record<string, unknown>> {
+export interface App {
     name: string
     version: string
     source?: string
-    meta?: T
+    meta?: Record<string, unknown>
 }
 
 export interface PackageProvider {
