@@ -6,14 +6,13 @@ import { z } from 'zod'
 import { bekkCore } from '#bekk-core'
 import type { ProgressEvent } from '#bekk-core'
 import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib/apps'
+import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
-import { resolveRepoPassword } from '#lib/secrets'
 import { createRichProgress, drawPanel, padStart } from '#lib/ui'
 import { getRandomSpinner, getSuccessIcon, getErrorIcon } from '#lib/ui/spinner'
 
 import { app } from '../app'
-import { configStore } from '../store'
 
 const formatBytes = (n: number): string => {
     if (n === 0) return '0 B'
@@ -47,98 +46,88 @@ export const backupCmd = app
     })
     .run(
         commandValidator(async ({ flags }) => {
-            const cfg = await configStore.read()
-
-            if (!cfg.repoPath) {
-                consola.error(red('Backup destination is not configured. Run `bekk init` first.'))
-                return
-            }
-            if (!cfg.sourcePaths.length) {
-                consola.error(
-                    red('No source paths configured. Run `bekk config` to add source paths.'),
-                )
-                return
-            }
-
-            const password = await resolveRepoPassword()
-            if (!password) {
-                consola.error(red('Backup password is not stored. Run `bekk config`.'))
-                return
-            }
-
-            // ── Repository backup ──────────────────────────────────────────────
-            const sources = [...cfg.sourcePaths]
+            let snapshotId = ''
+            let sources: string[] = []
             const progress = createRichProgress({ barWidth: 40 })
 
-            let currentBytes = 0
-            let totalBytes = 0
-            let phaseTitle = 'Preparing repository backup...'
-            let startedAt = 0
-
-            const handleProgress = (ev: ProgressEvent) => {
-                // Only track bytes-type progress for the bar/details
-                if (ev.progress_type === 'bytes') {
-                    if (ev.action === 'set_length' && typeof ev.length === 'number') {
-                        totalBytes = Number(ev.length)
-                        if (startedAt === 0) startedAt = Date.now()
-                    } else if (ev.action === 'inc' && typeof ev.increment === 'number') {
-                        currentBytes += Math.max(0, Number(ev.increment))
-                    }
-                }
-
-                if (ev.action === 'set_title' && ev.title) {
-                    phaseTitle = ev.title
-                }
-
-                let title = phaseTitle
-                if (ev.phase === 'prep' && ev.action === 'finish') {
-                    title = 'Backing up...'
-                }
-
-                const pct = totalBytes > 0 ? Math.min(100, (currentBytes / totalBytes) * 100) : 0
-
-                const details: string[] = []
-                if (totalBytes > 0 && currentBytes > 0 && startedAt > 0) {
-                    const elapsedMs = Date.now() - startedAt
-                    const elapsedSec = elapsedMs / 1000
-                    const lineWidth = 2 + 40 + 1 + 6
-                    const sizeStr = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`
-                    details.push(padStart(sizeStr, lineWidth))
-                    const speed = currentBytes / elapsedSec
-                    details.push(padStart(`${formatBytes(speed)}/s`, lineWidth))
-                    const remaining = totalBytes - currentBytes
-                    const eta = remaining / speed
-                    const etaStr = formatDuration(eta)
-                    if (etaStr !== '--:--') {
-                        details.push(padStart(`ETA ${etaStr}`, lineWidth))
-                    }
-                }
-
-                progress.update({
-                    title,
-                    bar: pct,
-                    details,
-                })
-            }
-
-            let snapshotId = ''
-            progress.update({ title: 'Preparing repository backup...', bar: 0 })
-
             try {
-                const result = await bekkCore.backupStream(
-                    cfg.repoPath,
-                    password,
-                    sources,
-                    { onProgress: handleProgress },
-                    flags['dry-run'],
-                    flags.tag,
-                    cfg.snapshotLimit,
-                )
+                await withRepoAuth(async (cfg, password) => {
+                    if (!cfg.sourcePaths.length) {
+                        throw new Error(
+                            'No source paths configured. Run `bekk config` to add source paths.',
+                        )
+                    }
 
-                if (result.status === 'error') throw new Error(result.message)
-                if (result.status === 'ok' && 'data' in result && result.data)
-                    snapshotId = result.data.snapshot_id
-                progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
+                    sources = [...cfg.sourcePaths]
+
+                    let currentBytes = 0
+                    let totalBytes = 0
+                    let phaseTitle = 'Preparing repository backup...'
+                    let startedAt = 0
+
+                    const handleProgress = (ev: ProgressEvent) => {
+                        // Only track bytes-type progress for the bar/details
+                        if (ev.progress_type === 'bytes') {
+                            if (ev.action === 'set_length' && typeof ev.length === 'number') {
+                                totalBytes = Number(ev.length)
+                                if (startedAt === 0) startedAt = Date.now()
+                            } else if (ev.action === 'inc' && typeof ev.increment === 'number') {
+                                currentBytes += Math.max(0, Number(ev.increment))
+                            }
+                        }
+
+                        if (ev.action === 'set_title' && ev.title) {
+                            phaseTitle = ev.title
+                        }
+
+                        let title = phaseTitle
+                        if (ev.phase === 'prep' && ev.action === 'finish') {
+                            title = 'Backing up...'
+                        }
+
+                        const pct =
+                            totalBytes > 0 ? Math.min(100, (currentBytes / totalBytes) * 100) : 0
+
+                        const details: string[] = []
+                        if (totalBytes > 0 && currentBytes > 0 && startedAt > 0) {
+                            const elapsedMs = Date.now() - startedAt
+                            const elapsedSec = elapsedMs / 1000
+                            const lineWidth = 2 + 40 + 1 + 6
+                            const sizeStr = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`
+                            details.push(padStart(sizeStr, lineWidth))
+                            const speed = currentBytes / elapsedSec
+                            details.push(padStart(`${formatBytes(speed)}/s`, lineWidth))
+                            const remaining = totalBytes - currentBytes
+                            const eta = remaining / speed
+                            const etaStr = formatDuration(eta)
+                            if (etaStr !== '--:--') {
+                                details.push(padStart(`ETA ${etaStr}`, lineWidth))
+                            }
+                        }
+
+                        progress.update({
+                            title,
+                            bar: pct,
+                            details,
+                        })
+                    }
+
+                    progress.update({ title: 'Preparing repository backup...', bar: 0 })
+
+                    const data = unwrapCoreResult(
+                        await bekkCore.backupStream(
+                            cfg.repoPath,
+                            password,
+                            sources,
+                            { onProgress: handleProgress },
+                            flags['dry-run'],
+                            flags.tag,
+                            cfg.snapshotLimit,
+                        ),
+                    )
+                    snapshotId = data.snapshot_id
+                    progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
+                })
             } catch (err) {
                 progress.finish({ title: `  ${red('✖')} Backing up...` })
                 consola.error(red('Backup failed:'), fmtErr(err))
