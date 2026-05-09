@@ -3,6 +3,14 @@ import { configDir, createStore, dataDir, stateDir } from '@crustjs/store'
 import { fieldSync } from '@crustjs/validate/zod'
 import { z } from 'zod'
 
+import {
+    DEFAULT_CHUNK_SIZE_MIB,
+    DEFAULT_COMPRESSION,
+    DEFAULT_EXTRA_VERIFY,
+    DEFAULT_PACK_SIZE_MIB,
+    DEFAULT_SNAPSHOT_LIMIT,
+} from '#lib/defaults'
+
 // ─── Config Store ────────────────────────────────────────────────────────────
 
 export const configStore = createStore({
@@ -46,27 +54,27 @@ export const configStore = createStore({
         },
         compression: {
             type: 'number',
-            default: 1,
+            default: DEFAULT_COMPRESSION,
             validate: fieldSync(z.number().int().min(-7).max(22)),
         },
         extraVerify: {
             type: 'boolean',
-            default: true,
+            default: DEFAULT_EXTRA_VERIFY,
             validate: fieldSync(z.boolean()),
         },
         packSizeMib: {
             type: 'number',
-            default: 32,
+            default: DEFAULT_PACK_SIZE_MIB,
             validate: fieldSync(z.number().int().positive()),
         },
         chunkSizeMib: {
             type: 'number',
-            default: 1,
+            default: DEFAULT_CHUNK_SIZE_MIB,
             validate: fieldSync(z.number().int().positive()),
         },
         snapshotLimit: {
             type: 'number',
-            default: 1,
+            default: DEFAULT_SNAPSHOT_LIMIT,
             validate: fieldSync(z.number().int().positive().min(1)),
         },
         savedPassword: {

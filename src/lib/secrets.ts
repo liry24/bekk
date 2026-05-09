@@ -2,6 +2,7 @@ import { select } from '@crustjs/prompts'
 import type { password as passwordPrompt } from '@crustjs/prompts'
 
 import { bekkCore } from '#bekk-core'
+import { unwrapCoreResult } from '#lib/core-helpers'
 
 import { configStore } from '../store'
 
@@ -92,8 +93,7 @@ export const changeRepoPassword = async (options: {
     saveToConfig?: boolean
 }) => {
     const { repo, oldPassword, newPassword, saveToConfig = false } = options
-    const result = await bekkCore.changePassword(repo, oldPassword, newPassword)
-    if (result.status === 'error') throw new Error(result.message)
+    unwrapCoreResult(await bekkCore.changePassword(repo, oldPassword, newPassword))
     await setRepoPassword(newPassword, { saveToConfig })
 }
 
