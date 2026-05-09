@@ -17,6 +17,10 @@ Hybrid CLI: TypeScript frontend (`src/`) + Rust backend (`bekk-core/`).
   - `#lib/*` → `src/lib/*`
   - `#bekk-core` → `bekk-core/src`
 
+### Layer boundaries
+
+- **`bekk-core` is a pure processing layer**. It must never contain CLI display concerns (colors, progress bars, spinner frames, or console output). Keep all terminal formatting, user-facing messages, and interactive UI inside `src/`.
+
 ## Developer Commands
 
 ```bash
