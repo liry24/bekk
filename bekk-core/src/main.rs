@@ -400,6 +400,8 @@ fn cmd_clean(repo: &str, dry_run: bool, instant_delete: bool, password_stdin: bo
                 })
             })
             .collect();
+        // check_results.is_ok() returns a Result<(), _>, so we call is_ok() again
+        // to obtain a plain bool indicating whether the repository check passed.
         json!({
             "ok": check_results.is_ok().is_ok(),
             "errors": errors,
