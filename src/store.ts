@@ -106,15 +106,11 @@ const updateNotifierInternalStore = createStore({
 })
 
 export const updateNotifierCacheAdapter: UpdateNotifierCacheAdapter = {
-    read: async () => {
-        const s = await updateNotifierInternalStore.read()
-        return { ...s }
-    },
-    write: async (state) => {
-        await updateNotifierInternalStore.write({
+    read: () => updateNotifierInternalStore.read(),
+    write: (state) =>
+        updateNotifierInternalStore.write({
             lastCheckedAt: state.lastCheckedAt,
             latestVersion: state.latestVersion,
             lastNotifiedVersion: state.lastNotifiedVersion,
-        })
-    },
+        }),
 }
