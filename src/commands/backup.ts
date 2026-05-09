@@ -90,9 +90,11 @@ export const backupCmd = app
                             const elapsedMs = Date.now() - startedAt
                             const elapsedSec = elapsedMs / 1000
                             const speed = currentBytes / elapsedSec
-                            const lineWidth = 2 + 40 + 1 + 6
-                            const labelWidth = 7
-                            const valueWidth = lineWidth - labelWidth
+                            // Align with the '%' in the progress bar line:
+                            //   `  ${bar} ${pctStr}` → indent(2) + bar(40) + space(1) + pctStr(6) = 49
+                            // Detail line: `  Label: ${padStart(value, valueWidth)}`
+                            //   → indent(2) + label(7) + valueWidth = 49
+                            const valueWidth = 40
 
                             const sizeValue =
                                 totalBytes > 0
