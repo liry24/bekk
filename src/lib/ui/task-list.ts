@@ -111,6 +111,3 @@ export const createTaskList = (): TaskListInstance => {
         },
     }
 }
-
-// 後方互換性のため
-export const TaskList = createTaskList

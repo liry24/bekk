@@ -19,7 +19,7 @@ export interface PanelOptions {
     titleColor?: number
 }
 
-export const renderPanel = (content: string[], options: PanelOptions = {}): string[] => {
+export const drawPanel = (content: string[], options: PanelOptions = {}) => {
     const { title, width: optWidth, padding = 1, borderColor, titleColor } = options
 
     const maxContentWidth =
@@ -65,11 +65,5 @@ export const renderPanel = (content: string[], options: PanelOptions = {}): stri
         colored(BOX.h, borderColor).repeat(innerWidth) +
         colored(BOX.br, borderColor)
 
-    return [topLine, ...bodyLines, bottomLine]
-}
-
-export const drawPanel = (content: string[], options?: PanelOptions): void => {
-    for (const line of renderPanel(content, options)) {
-        console.log(line)
-    }
+    for (const line of [topLine, ...bodyLines, bottomLine]) console.log(line)
 }

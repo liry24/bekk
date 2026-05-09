@@ -2,10 +2,8 @@
 
 import { stripAnsi } from './layout'
 
-export const color256 = (fg: number) => `\x1b[38;5;${fg}m`
-export const colorReset = '\x1b[0m'
-export const bold = '\x1b[1m'
-export const dim = '\x1b[2m'
+const color256 = (fg: number) => `\x1b[38;5;${fg}m`
+const colorReset = '\x1b[0m'
 
 /** 線形補間 */
 const lerp = (a: number, b: number, t: number): number => Math.round(a + (b - a) * t)
@@ -40,7 +38,6 @@ export const gradientBar = (
     endColor: number,
 ): string => {
     const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
-    const empty = width - filled
     let bar = ''
     for (let i = 0; i < width; i++) {
         const t = width <= 1 ? 0 : i / (width - 1)
@@ -48,7 +45,7 @@ export const gradientBar = (
         const char = i < filled ? '█' : '░'
         bar += `${color256(c)}${char}${colorReset}`
     }
-    return bar + ' '.repeat(empty > 0 && filled === width ? 0 : 0)
+    return bar
 }
 
 /** デフォルトのバックアップ進捗グラデーション: シアン→グリーン */
