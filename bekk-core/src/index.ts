@@ -60,11 +60,18 @@ const streamLines = async (stream: ReadableStream<Uint8Array>, onLine: (line: st
     if (buffer.trim()) onLine(buffer)
 }
 
-const runBekkCore = async (
+interface BekkCoreProc {
+    stdout: ReadableStream<Uint8Array>
+    stderr: ReadableStream<Uint8Array>
+    stdin?: WritableStream
+    exited: Promise<number>
+}
+
+const execBekkCore = (
     args: string[],
     password?: string,
     newPassword?: string,
-): Promise<CoreResult> => {
+): { proc: BekkCoreProc; hasStdinPassword: boolean } => {
     const bin = bekkCoreBin()
     const hasStdinPassword = password !== undefined
     const proc = Bun.spawn([bin, ...(hasStdinPassword ? ['--password-stdin'] : []), ...args], {
@@ -77,6 +84,10 @@ const runBekkCore = async (
         if (newPassword) proc.stdin.write(newPassword + '\n')
         proc.stdin.end()
     }
+    return { proc: proc as unknown as BekkCoreProc, hasStdinPassword }
+}
+
+const parseCoreResult = async (proc: BekkCoreProc): Promise<CoreResult> => {
     await proc.exited
     const stdout = await new Response(proc.stdout).text()
     if (!stdout.trim()) {
@@ -88,6 +99,15 @@ const runBekkCore = async (
     } catch {
         return { status: 'error', message: `bekk-core output is not valid JSON: ${stdout}` }
     }
+}
+
+const runBekkCore = async (
+    args: string[],
+    password?: string,
+    newPassword?: string,
+): Promise<CoreResult> => {
+    const { proc } = execBekkCore(args, password, newPassword)
+    return parseCoreResult(proc)
 }
 
 export interface ProgressEvent {
@@ -110,18 +130,7 @@ const runBekkCoreStream = async (
     password?: string,
     newPassword?: string,
 ): Promise<CoreResult> => {
-    const bin = bekkCoreBin()
-    const hasStdinPassword = password !== undefined
-    const proc = Bun.spawn([bin, ...(hasStdinPassword ? ['--password-stdin'] : []), ...args], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-        stdin: hasStdinPassword ? 'pipe' : 'inherit',
-    })
-    if (hasStdinPassword && proc.stdin) {
-        proc.stdin.write(password + '\n')
-        if (newPassword) proc.stdin.write(newPassword + '\n')
-        proc.stdin.end()
-    }
+    const { proc } = execBekkCore(args, password, newPassword)
 
     let result: CoreResult | null = null
     const pendingLines: string[] = []
@@ -343,6 +352,16 @@ export const bekkCore = {
         const args = ['clean', '--repo', toRepoArg(repo)]
         if (dryRun) args.push('--dry-run')
         if (instantDelete) args.push('--instant-delete')
-        return runBekkCore(args, password)
+        return runBekkCore(args, password) as Promise<
+            CoreResult<{
+                prune: {
+                    ok?: boolean
+                    unreferenced_packs?: number
+                    unreferenced_size?: number
+                }
+                check: { ok?: boolean; errors?: { level: string; message: string }[] } | null
+                repair_index: { ok?: boolean } | null
+            }>
+        >
     },
 }
