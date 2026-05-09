@@ -7,8 +7,8 @@ import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
+import { fmtErr } from '#lib/error'
 import { isAdmin } from '#lib/platform'
-import { exec } from '#lib/spawn'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -18,6 +18,14 @@ const TASK_NAME = 'BekkDaemon'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const getBinaryPath = () => process.execPath
+
+const exec = (args: string[], opts?: { cwd?: string; env?: Record<string, string> }) => {
+    const result = Bun.spawnSync(args, { ...opts, stdout: 'pipe', stderr: 'pipe' })
+    if (result.exitCode !== 0) {
+        throw new Error(new TextDecoder().decode(result.stderr).trim())
+    }
+    return new TextDecoder().decode(result.stdout).trim()
+}
 
 // Windows ──────────────────────────────────────────────────────────────────────
 
@@ -37,7 +45,7 @@ const registerWindows = (exePath: string, admin: boolean) => {
             '/f',
         ])
     } catch (err) {
-        throw new Error(`schtasks failed: ${err instanceof Error ? err.message : String(err)}`)
+        throw new Error(`schtasks failed: ${fmtErr(err)}`)
     }
 }
 
@@ -45,7 +53,7 @@ const unregisterWindows = () => {
     try {
         exec(['schtasks', '/delete', '/tn', TASK_NAME, '/f'])
     } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = fmtErr(err)
         // Treat "not found" as success
         if (!msg.includes('not found') && !msg.includes('ERROR: The system cannot find'))
             throw new Error(`schtasks failed: ${msg}`)
@@ -147,7 +155,7 @@ const registerLinux = async (exePath: string, admin: boolean) => {
     try {
         exec(args)
     } catch (err) {
-        throw new Error(`systemctl failed: ${err instanceof Error ? err.message : String(err)}`)
+        throw new Error(`systemctl failed: ${fmtErr(err)}`)
     }
 }
 
@@ -215,10 +223,7 @@ const registerCmd = app
             else if (process.platform === 'darwin') await registerMacOS(exePath, admin)
             else await registerLinux(exePath, admin)
         } catch (err) {
-            consola.error(
-                red('Failed to register startup task: ') +
-                    (err instanceof Error ? err.message : String(err)),
-            )
+            consola.error(red('Failed to register startup task: ') + fmtErr(err))
             process.exit(1)
         }
 
@@ -253,10 +258,7 @@ const unregisterCmd = app
             else if (process.platform === 'darwin') await unregisterMacOS(admin)
             else await unregisterLinux(admin)
         } catch (err) {
-            consola.error(
-                red('Failed to remove startup task: ') +
-                    (err instanceof Error ? err.message : String(err)),
-            )
+            consola.error(red('Failed to remove startup task: ') + fmtErr(err))
             process.exit(1)
         }
 

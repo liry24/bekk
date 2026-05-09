@@ -1,7 +1,46 @@
+import { destr } from 'destr'
+
 import { commandExists } from '#lib/shell'
 import type { App, PackageProvider } from '#lib/types'
 
-import { listScoop } from '../legacy'
+interface ScoopExportApp {
+    Name: string
+    Version: string
+    Source?: string
+    Bucket?: string
+}
+
+interface ScoopExport {
+    apps?: ScoopExportApp[]
+}
+
+const utf8 = new TextDecoder('utf-8')
+
+const listScoop = () => {
+    const result = Bun.spawnSync(
+        [
+            'powershell.exe',
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            'scoop export',
+        ],
+        { stderr: 'ignore' },
+    )
+    if (result.exitCode !== 0) return null
+
+    const output = utf8.decode(result.stdout)
+    const data = destr<ScoopExport>(output)
+    if (!data?.apps) return null
+
+    return data.apps.map((r) => ({
+        name: r.Name,
+        version: r.Version,
+        source: r.Source ?? r.Bucket ?? '',
+    }))
+}
 
 export const scoopProvider: PackageProvider = {
     id: 'scoop',
@@ -21,5 +60,21 @@ export const scoopProvider: PackageProvider = {
                     meta: {},
                 }) satisfies App,
         )
+    },
+
+    install: async (app) => {
+        const result = Bun.spawnSync(
+            [
+                'powershell.exe',
+                '-NoProfile',
+                '-NonInteractive',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-Command',
+                `scoop install "${app.name}@${app.version}"`,
+            ],
+            { stderr: 'pipe' },
+        )
+        return result.exitCode === 0
     },
 }

@@ -1,21 +1,14 @@
-import { bold, dim, green, red, table } from '@crustjs/style'
+import { bold, dim, green, table } from '@crustjs/style'
 import { flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
-import { bekkCore, type SnapshotEntry } from '#bekk-core'
-import { resolveRepoPassword } from '#lib/secrets'
+import { bekkCore } from '#bekk-core'
+import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 
 import { app } from '../app'
-import { configStore } from '../store'
 
-const formatTime = (isoStr: string) => {
-    try {
-        return new Date(isoStr).toLocaleString()
-    } catch {
-        return isoStr
-    }
-}
+const formatTime = (isoStr: string) => new Date(isoStr).toLocaleString()
 
 export const snapshotsCmd = app
     .sub('snapshots')
@@ -24,24 +17,9 @@ export const snapshotsCmd = app
         json: flag(z.boolean().default(false).describe('Output raw JSON')),
     })
     .run(async ({ flags }) => {
-        const cfg = await configStore.read()
-
-        if (!cfg.repoPath) {
-            throw new Error('Repository is not configured. Run `bekk init` first.')
-        }
-
-        const password = await resolveRepoPassword()
-        if (!password) {
-            throw new Error('Repository password is not stored. Run `bekk config`.')
-        }
-
-        const result = await bekkCore.snapshots(cfg.repoPath, password)
-
-        if (result.status === 'error') {
-            throw new Error(red('Failed to list snapshots: ') + result.message)
-        }
-
-        const snaps: SnapshotEntry[] = 'data' in result ? result.data : []
+        const snaps = await withRepoAuth(async (cfg, password) => {
+            return unwrapCoreResult(await bekkCore.snapshots(cfg.repoPath, password))
+        })
 
         if (snaps.length === 0) {
             consola.info(dim('No snapshots found.'))

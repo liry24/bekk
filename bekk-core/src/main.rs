@@ -1,4 +1,4 @@
-use std::{env, fs, io::ErrorKind};
+use std::{fs, io::ErrorKind, sync::Mutex, time::{Duration, Instant}};
 
 use anyhow::{Result, anyhow};
 use bytesize::ByteSize;
@@ -6,8 +6,10 @@ use clap::{Parser, Subcommand};
 use rustic_backend::BackendOptions;
 use rustic_core::repofile::KeyId;
 use rustic_core::{
-    BackupOptions, ConfigOptions, Credentials, KeyOptions, LocalDestination, LsOptions, OpenStatus,
-    PathList, Repository, RepositoryOptions, RestoreOptions, SnapshotOptions,
+    BackupOptions, CheckOptions, ConfigOptions, Credentials, KeyOptions, LocalDestination,
+    LsOptions, OpenStatus, PathList, PruneOptions, PrunePlan, Progress, ProgressBars, ProgressType,
+    RepairIndexOptions, Repository, RepositoryOptions, RestoreOptions, RusticProgress,
+    SnapshotOptions,
 };
 use serde_json::{Value, json};
 
@@ -56,6 +58,10 @@ enum Commands {
         dry_run: bool,
         #[arg(long, help = "Tag to attach to the snapshot")]
         tag: Option<String>,
+        #[arg(long, help = "Emit JSON Lines progress to stdout")]
+        progress: bool,
+        #[arg(long, default_value_t = 1, help = "Maximum snapshots to keep (oldest deleted first)")]
+        snapshot_limit: usize,
     },
     /// Restore from the repository to a target directory
     Restore {
@@ -99,19 +105,28 @@ enum Commands {
         #[arg(long, default_value_t = 1, help = "Average chunk size in MiB")]
         chunk_size: u64,
     },
+    /// Prune orphaned blobs, check repository, and repair index
+    Clean {
+        #[arg(long, help = "Path to the repository")]
+        repo: String,
+        #[arg(long, help = "Dry run — show what would be pruned without writing")]
+        dry_run: bool,
+        #[arg(long, help = "Delete files immediately instead of marking them")]
+        instant_delete: bool,
+    },
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn read_password(stdin: bool, env_var: &str) -> Result<String> {
-    if stdin {
-        let mut password = String::new();
-        std::io::stdin().read_line(&mut password)?;
-        Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
-    } else {
-        env::var(env_var)
-            .map_err(|_| anyhow!("{env_var} environment variable is not set"))
+fn read_password(stdin: bool) -> Result<String> {
+    if !stdin {
+        return Err(anyhow!(
+            "Password must be provided via stdin (use --password-stdin)"
+        ));
     }
+    let mut password = String::new();
+    std::io::stdin().read_line(&mut password)?;
+    Ok(password.trim_end_matches('\n').trim_end_matches('\r').to_string())
 }
 
 fn make_backends(repo: &str) -> Result<rustic_core::RepositoryBackends> {
@@ -124,6 +139,92 @@ fn open_repo(repo: &str, password: &str) -> Result<Repository<OpenStatus>> {
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
     Ok(Repository::new(&repo_opts, &backends)?.open(&credentials)?)
+}
+
+fn open_repo_with_progress(repo: &str, password: &str, pb: impl ProgressBars) -> Result<Repository<OpenStatus>> {
+    let backends = make_backends(repo)?;
+    let repo_opts = RepositoryOptions::default();
+    let credentials = Credentials::password(password);
+    Ok(Repository::new_with_progress(&repo_opts, &backends, pb)?.open(&credentials)?)
+}
+
+// ─── JSON Progress Bars ──────────────────────────────────────────────────────
+
+#[derive(Debug)]
+struct JsonProgress {
+    prefix: String,
+    progress_type: ProgressType,
+    last_emit: Mutex<Instant>,
+}
+
+impl JsonProgress {
+    fn emit(&self, event: Value) {
+        let mut last = self.last_emit.lock().unwrap();
+        if last.elapsed() >= Duration::from_millis(50) {
+            println!("{}", event);
+            *last = Instant::now();
+        }
+    }
+
+    fn progress_type_str(&self) -> &'static str {
+        match self.progress_type {
+            ProgressType::Spinner => "spinner",
+            ProgressType::Counter => "counter",
+            ProgressType::Bytes => "bytes",
+        }
+    }
+}
+
+impl RusticProgress for JsonProgress {
+    fn is_hidden(&self) -> bool { false }
+    fn set_length(&self, len: u64) {
+        self.emit(json!({
+            "type": "progress",
+            "phase": self.prefix,
+            "progress_type": self.progress_type_str(),
+            "action": "set_length",
+            "length": len
+        }));
+    }
+    fn set_title(&self, title: &str) {
+        self.emit(json!({
+            "type": "progress",
+            "phase": self.prefix,
+            "progress_type": self.progress_type_str(),
+            "action": "set_title",
+            "title": title
+        }));
+    }
+    fn inc(&self, inc: u64) {
+        self.emit(json!({
+            "type": "progress",
+            "phase": self.prefix,
+            "progress_type": self.progress_type_str(),
+            "action": "inc",
+            "increment": inc
+        }));
+    }
+    fn finish(&self) {
+        println!("{}", json!({
+            "type": "progress",
+            "phase": self.prefix,
+            "progress_type": self.progress_type_str(),
+            "action": "finish"
+        }));
+    }
+}
+
+#[derive(Debug)]
+struct JsonProgressBars;
+
+impl ProgressBars for JsonProgressBars {
+    fn progress(&self, progress_type: ProgressType, prefix: &str) -> Progress {
+        Progress::new(JsonProgress {
+            prefix: prefix.to_string(),
+            progress_type,
+            last_emit: Mutex::new(Instant::now() - Duration::from_secs(1)),
+        })
+    }
 }
 
 fn ok() -> Value {
@@ -166,7 +267,7 @@ fn cmd_init(
         reset_local_repo_for_reinit(repo)?;
     }
 
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
     let backends = make_backends(repo)?;
     let repo_opts = RepositoryOptions::default();
     let credentials = Credentials::password(password);
@@ -224,8 +325,8 @@ fn reset_local_repo_for_reinit(repo: &str) -> Result<()> {
 }
 
 fn cmd_change_password(repo: &str, password_stdin: bool) -> Result<Value> {
-    let old_password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
-    let new_password = read_password(password_stdin, "BEKK_NEW_PASSWORD")?;
+    let old_password = read_password(password_stdin)?;
+    let new_password = read_password(password_stdin)?;
 
     if old_password == new_password {
         return Err(anyhow!(
@@ -257,7 +358,7 @@ fn cmd_apply_config(
     chunk_size: u64,
     password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
     let config_opts = build_config_opts(compression, no_extra_verify, pack_size, chunk_size);
 
     let mut repo = open_repo(repo, &password)?;
@@ -266,16 +367,79 @@ fn cmd_apply_config(
     Ok(ok())
 }
 
+fn cmd_clean(repo: &str, dry_run: bool, instant_delete: bool, password_stdin: bool) -> Result<Value> {
+    let password = read_password(password_stdin)?;
+    let repo = open_repo(repo, &password)?;
+
+    // 1. Prune
+    let prune_opts = PruneOptions::default().instant_delete(instant_delete);
+    let plan = PrunePlan::from_prune_options(&repo, &prune_opts)?;
+
+    let prune_data = if dry_run {
+        json!({
+            "unreferenced_packs": plan.stats.packs_unref,
+            "unreferenced_size": plan.stats.size_unref,
+        })
+    } else {
+        repo.prune(&prune_opts, plan)?;
+        json!({ "ok": true })
+    };
+
+    // 2. Check (skip if dry_run)
+    let check_data = if dry_run {
+        serde_json::Value::Null
+    } else {
+        let check_results = repo.check(CheckOptions::default())?;
+        let errors: Vec<Value> = check_results
+            .0
+            .iter()
+            .map(|(level, err)| {
+                json!({
+                    "level": format!("{:?}", level),
+                    "message": format!("{:?}", err),
+                })
+            })
+            .collect();
+        // check_results.is_ok() returns a Result<(), _>, so we call is_ok() again
+        // to obtain a plain bool indicating whether the repository check passed.
+        json!({
+            "ok": check_results.is_ok().is_ok(),
+            "errors": errors,
+        })
+    };
+
+    // 3. Repair Index (skip if dry_run)
+    let repair_data = if dry_run {
+        serde_json::Value::Null
+    } else {
+        repo.repair_index(&RepairIndexOptions::default().read_all(false), false)?;
+        json!({ "ok": true })
+    };
+
+    Ok(ok_data(json!({
+        "prune": prune_data,
+        "check": check_data,
+        "repair_index": repair_data,
+    })))
+}
+
 fn cmd_backup(
     repo: &str,
     sources: &[String],
     dry_run: bool,
     tag: Option<&str>,
     password_stdin: bool,
+    progress: bool,
+    snapshot_limit: usize,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
-    let repo = open_repo(repo, &password)?.to_indexed_ids()?;
+    let repo = if progress {
+        open_repo_with_progress(repo, &password, JsonProgressBars)?
+    } else {
+        open_repo(repo, &password)?
+    };
+    let repo = repo.to_indexed_ids()?;
 
     let mut snap_opts = SnapshotOptions::default();
     if let Some(t) = tag {
@@ -288,9 +452,25 @@ fn cmd_backup(
 
     let snap = repo.backup(&backup_opts, &source, snap)?;
 
+    // Prune oldest snapshots if over limit (after successful backup)
+    if !dry_run && snapshot_limit > 0 {
+        let mut snaps = repo.get_all_snapshots()?;
+        snaps.sort_by(|a, b| a.time.cmp(&b.time));
+        if snaps.len() > snapshot_limit {
+            let to_delete: Vec<_> = snaps
+                .iter()
+                .take(snaps.len() - snapshot_limit)
+                .map(|s| s.id)
+                .collect();
+            if !to_delete.is_empty() {
+                repo.delete_snapshots(&to_delete)?;
+            }
+        }
+    }
+
     Ok(ok_data(json!({
         "snapshot_id": (*snap.id).to_hex().as_str().to_string(),
-        "time": snap.time.to_string(),
+        "time": snap.time.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(),
         "paths": snap.paths.iter().collect::<Vec<_>>(),
     })))
 }
@@ -302,7 +482,7 @@ fn cmd_restore(
     dry_run: bool,
     password_stdin: bool,
 ) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
     let repo = open_repo(repo, &password)?.to_indexed()?;
 
@@ -322,7 +502,7 @@ fn cmd_restore(
 }
 
 fn cmd_snapshots(repo: &str, password_stdin: bool) -> Result<Value> {
-    let password = read_password(password_stdin, "BEKK_REPO_PASSWORD")?;
+    let password = read_password(password_stdin)?;
 
     let repo = open_repo(repo, &password)?;
     let mut snaps = repo.get_all_snapshots()?;
@@ -333,7 +513,7 @@ fn cmd_snapshots(repo: &str, password_stdin: bool) -> Result<Value> {
         .map(|s| {
             json!({
                 "id": (*s.id).to_hex().as_str().to_string(),
-                "time": s.time.to_string(),
+                "time": s.time.strftime("%Y-%m-%dT%H:%M:%S%:z").to_string(),
                 "paths": s.paths.iter().collect::<Vec<_>>(),
                 "tags": s.tags.iter().collect::<Vec<_>>(),
                 "hostname": s.hostname,
@@ -372,7 +552,9 @@ fn main() {
             sources,
             dry_run,
             tag,
-        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref(), cli.password_stdin),
+            progress,
+            snapshot_limit,
+        } => cmd_backup(&repo, &sources, dry_run, tag.as_deref(), cli.password_stdin, progress, snapshot_limit),
         Commands::Restore {
             repo,
             snapshot,
@@ -395,6 +577,11 @@ fn main() {
             chunk_size,
             cli.password_stdin,
         ),
+        Commands::Clean {
+            repo,
+            dry_run,
+            instant_delete,
+        } => cmd_clean(&repo, dry_run, instant_delete, cli.password_stdin),
     };
 
     match result {

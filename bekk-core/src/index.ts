@@ -43,11 +43,35 @@ export interface SnapshotEntry {
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
 
-const runBekkCore = async (
+const streamLines = async (stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) => {
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+            if (line.trim()) onLine(line)
+        }
+    }
+    if (buffer.trim()) onLine(buffer)
+}
+
+interface BekkCoreProc {
+    stdout: ReadableStream<Uint8Array>
+    stderr: ReadableStream<Uint8Array>
+    stdin?: WritableStream
+    exited: Promise<number>
+}
+
+const execBekkCore = (
     args: string[],
     password?: string,
     newPassword?: string,
-): Promise<CoreResult> => {
+): { proc: BekkCoreProc; hasStdinPassword: boolean } => {
     const bin = bekkCoreBin()
     const hasStdinPassword = password !== undefined
     const proc = Bun.spawn([bin, ...(hasStdinPassword ? ['--password-stdin'] : []), ...args], {
@@ -60,8 +84,79 @@ const runBekkCore = async (
         if (newPassword) proc.stdin.write(newPassword + '\n')
         proc.stdin.end()
     }
+    return { proc: proc as unknown as BekkCoreProc, hasStdinPassword }
+}
+
+const parseCoreResult = async (proc: BekkCoreProc): Promise<CoreResult> => {
     await proc.exited
     const stdout = await new Response(proc.stdout).text()
+    if (!stdout.trim()) {
+        const stderr = await new Response(proc.stderr).text()
+        return { status: 'error', message: stderr.trim() || 'bekk-core returned no output' }
+    }
+    try {
+        return JSON.parse(stdout) as CoreResult
+    } catch {
+        return { status: 'error', message: `bekk-core output is not valid JSON: ${stdout}` }
+    }
+}
+
+const runBekkCore = async (
+    args: string[],
+    password?: string,
+    newPassword?: string,
+): Promise<CoreResult> => {
+    const { proc } = execBekkCore(args, password, newPassword)
+    return parseCoreResult(proc)
+}
+
+export interface ProgressEvent {
+    type: 'progress'
+    phase: string
+    action: string
+    progress_type?: 'spinner' | 'counter' | 'bytes'
+    length?: number
+    title?: string
+    increment?: number
+}
+
+export interface BackupStreamCallbacks {
+    onProgress?: (event: ProgressEvent) => void
+}
+
+const runBekkCoreStream = async (
+    args: string[],
+    callbacks: BackupStreamCallbacks,
+    password?: string,
+    newPassword?: string,
+): Promise<CoreResult> => {
+    const { proc } = execBekkCore(args, password, newPassword)
+
+    let result: CoreResult | null = null
+    const pendingLines: string[] = []
+
+    await streamLines(proc.stdout, (line) => {
+        try {
+            const parsed = JSON.parse(line) as Record<string, unknown>
+            if (parsed.type === 'progress') {
+                callbacks.onProgress?.(parsed as unknown as ProgressEvent)
+                return
+            }
+            if (parsed.status === 'ok' || parsed.status === 'error') {
+                result = parsed as CoreResult
+                return
+            }
+        } catch {
+            // not JSON, treat as raw line
+        }
+        pendingLines.push(line)
+    })
+
+    await proc.exited
+
+    if (result) return result
+
+    const stdout = pendingLines.join('\n')
     if (!stdout.trim()) {
         const stderr = await new Response(proc.stderr).text()
         return { status: 'error', message: stderr.trim() || 'bekk-core returned no output' }
@@ -97,6 +192,7 @@ export interface InitConfigPayload {
     extraVerify: boolean
     packSizeMib: number
     chunkSizeMib: number
+    snapshotLimit: number
     savedPassword: string
     providerConfigsJson: string
 }
@@ -124,6 +220,7 @@ const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     extraVerify: true,
     packSizeMib: 32,
     chunkSizeMib: 1,
+    snapshotLimit: 1,
     savedPassword: '',
     providerConfigsJson: '{}',
 })
@@ -168,7 +265,14 @@ export const bekkCore = {
         return { normalizedRepo: normalize(repoPath), nextConfig, initResult }
     },
 
-    backup(repo: string, password: string, sources: string[], dryRun = false, tag?: string) {
+    backup(
+        repo: string,
+        password: string,
+        sources: string[],
+        dryRun = false,
+        tag?: string,
+        snapshotLimit?: number,
+    ) {
         const args = [
             'backup',
             '--repo',
@@ -177,7 +281,30 @@ export const bekkCore = {
         ]
         if (dryRun) args.push('--dry-run')
         if (tag) args.push('--tag', tag)
+        if (snapshotLimit !== undefined) args.push('--snapshot-limit', String(snapshotLimit))
         return runBekkCore(args, password) as Promise<CoreResult<BackupData>>
+    },
+
+    backupStream(
+        repo: string,
+        password: string,
+        sources: string[],
+        callbacks: BackupStreamCallbacks,
+        dryRun = false,
+        tag?: string,
+        snapshotLimit?: number,
+    ) {
+        const args = [
+            'backup',
+            '--repo',
+            toRepoArg(repo),
+            '--progress',
+            ...sources.flatMap((s) => ['--source', s]),
+        ]
+        if (dryRun) args.push('--dry-run')
+        if (tag) args.push('--tag', tag)
+        if (snapshotLimit !== undefined) args.push('--snapshot-limit', String(snapshotLimit))
+        return runBekkCoreStream(args, callbacks, password) as Promise<CoreResult<BackupData>>
     },
 
     restore(repo: string, password: string, target: string, snapshot = 'latest', dryRun = false) {
@@ -219,5 +346,22 @@ export const bekkCore = {
 
     changePassword(repo: string, oldPassword: string, newPassword: string) {
         return runBekkCore(['change-password', '--repo', toRepoArg(repo)], oldPassword, newPassword)
+    },
+
+    clean(repo: string, password: string, dryRun = false, instantDelete = false) {
+        const args = ['clean', '--repo', toRepoArg(repo)]
+        if (dryRun) args.push('--dry-run')
+        if (instantDelete) args.push('--instant-delete')
+        return runBekkCore(args, password) as Promise<
+            CoreResult<{
+                prune: {
+                    ok?: boolean
+                    unreferenced_packs?: number
+                    unreferenced_size?: number
+                }
+                check: { ok?: boolean; errors?: { level: string; message: string }[] } | null
+                repair_index: { ok?: boolean } | null
+            }>
+        >
     },
 }

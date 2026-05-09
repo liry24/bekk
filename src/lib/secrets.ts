@@ -1,6 +1,8 @@
 import { select } from '@crustjs/prompts'
+import type { password as passwordPrompt } from '@crustjs/prompts'
 
 import { bekkCore } from '#bekk-core'
+import { unwrapCoreResult } from '#lib/core-helpers'
 
 import { configStore } from '../store'
 
@@ -28,6 +30,27 @@ export const generatePassword = (length = 32) => {
         }
     }
     return result.join('')
+}
+
+/**
+ * Prompt for a backup password. Returns auto-generated password if user leaves it blank.
+ */
+export const promptPassword = async (
+    password: typeof passwordPrompt,
+): Promise<{ password: string; wasGenerated: boolean }> => {
+    const entered = await password({
+        message: 'Backup password  (press Enter to auto-generate)',
+    })
+
+    if (entered.trim()) {
+        await password({
+            message: 'Confirm backup password',
+            validate: (v) => (v === entered ? true : 'Passwords do not match'),
+        })
+        return { password: entered, wasGenerated: false }
+    }
+
+    return { password: generatePassword(), wasGenerated: true }
 }
 
 /**
@@ -70,13 +93,9 @@ export const changeRepoPassword = async (options: {
     saveToConfig?: boolean
 }) => {
     const { repo, oldPassword, newPassword, saveToConfig = false } = options
-    const result = await bekkCore.changePassword(repo, oldPassword, newPassword)
-    if (result.status === 'error') throw new Error(result.message)
+    unwrapCoreResult(await bekkCore.changePassword(repo, oldPassword, newPassword))
     await setRepoPassword(newPassword, { saveToConfig })
 }
-
-export const deleteRepoPassword = async () =>
-    Bun.secrets.delete({ service: SERVICE, name: REPO_PASSWORD_KEY })
 
 // ─── S3 Secret Access Key ─────────────────────────────────────────────────────
 

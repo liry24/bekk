@@ -51,18 +51,53 @@ bekk backup
 
 ### `bekk init`
 
-Interactive setup. Sets the backup destination and creates a default config file.
+Interactive setup wizard. Walks you through:
+
+1. Choosing a backup destination (local folder or cloud storage via rclone)
+2. Setting an encryption password (or auto-generating one)
+3. Selecting source paths to back up
+4. Optionally enabling sync backends (GitHub Gist or S3-compatible storage)
 
 ---
 
 ### `bekk backup`
 
-Run a backup. Saves app lists (winget / scoop) and creates a new encrypted snapshot of all configured source paths in the repository.
+Run a backup. Saves app lists (winget / scoop) and creates a new encrypted snapshot of all configured source paths in the repository. If a snapshot retention limit is configured, excess old snapshots are automatically removed after the backup succeeds.
 
 | Flag        | Short | Description                                                      |
 | ----------- | ----- | ---------------------------------------------------------------- |
 | `--dry-run` | `-d`  | Dry run — scan apps and preview snapshot changes without writing |
 | `--tag`     | `-t`  | Tag to attach to the snapshot                                    |
+
+---
+
+### `bekk apps`
+
+Manage application lists and installations.
+
+| Subcommand     | Description                     |
+| -------------- | ------------------------------- |
+| `apps list`    | List currently installed apps   |
+| `apps backup`  | Save app lists to local storage |
+| `apps restore` | Restore apps from backup        |
+
+#### `apps list`
+
+Lists applications managed by available package managers (currently winget and scoop on Windows).
+
+#### `apps backup`
+
+Backs up app lists from each available provider to the local data directory.
+
+#### `apps restore`
+
+Compares backed-up app lists against the current environment and lets you selectively install missing apps or update apps to the latest version.
+
+| Flag        | Short | Description                                 |
+| ----------- | ----- | ------------------------------------------- |
+| `--dry-run` | `-d`  | Preview changes without installing anything |
+
+> **Note:** App list backup/restore is currently only available on Windows.
 
 ---
 
@@ -80,15 +115,38 @@ See available snapshots with `bekk snapshots`.
 
 ---
 
+### `bekk snapshots`
+
+List all snapshots in the backup repository.
+
+| Flag     | Short | Description                                  |
+| -------- | ----- | -------------------------------------------- |
+| `--json` |       | Output raw JSON instead of a formatted table |
+
+---
+
+### `bekk clean`
+
+Run repository maintenance: prune orphaned data, check repository integrity, and repair the index.
+
+| Flag               | Short | Description                                                              |
+| ------------------ | ----- | ------------------------------------------------------------------------ |
+| `--dry-run`        | `-d`  | Dry run — preview prune results without making changes                   |
+| `--instant-delete` |       | Delete unreferenced pack files immediately (unsafe with parallel access) |
+
+By default, `bekk clean` asks whether to enable instant-delete interactively. In dry-run mode, only the prune preview is shown and check/repair are skipped.
+
+---
+
 ### `bekk schedule`
 
 Manage the automated backup schedule.
 
-| Subcommand            | Description                                     |
-| --------------------- | ----------------------------------------------- |
-| `schedule register`   | Register the backup daemon as a startup service |
-| `schedule unregister` | Remove the registered startup service           |
-| `schedule status`     | Show the current schedule and next run time     |
+| Subcommand            | Description                                                       |
+| --------------------- | ----------------------------------------------------------------- |
+| `schedule register`   | Register the backup daemon as a startup service                   |
+| `schedule unregister` | Remove the registered startup service and clear the cron schedule |
+| `schedule status`     | Show the current schedule and next run time                       |
 
 #### How it works
 
@@ -109,6 +167,14 @@ Run as admin/root to register a system-wide service; otherwise it registers for 
 
 ---
 
+### `bekk daemon`
+
+Run the backup daemon in the foreground. It stays resident and triggers backups automatically based on the cron schedule configured with `bekk schedule register`.
+
+The daemon writes its activity log to the OS data directory (e.g. `%APPDATA%\bekk\daemon.log` on Windows). Press `Ctrl+C` to stop.
+
+---
+
 ### `bekk config`
 
 Interactive configuration menu. Run `bekk config` to open the menu.
@@ -118,6 +184,7 @@ Interactive configuration menu. Run `bekk config` to open the menu.
 | Backup destination | Set or change the backup repo path                         |
 | Source paths       | Add or remove folders to back up                           |
 | Password           | Change the backup password; optionally save to config file |
+| Sync backends ▶    | Configure Gist and S3 destinations for `bekk push`         |
 | Advanced ▶         | App list, compression, pack size, chunk size, verify       |
 
 #### Advanced settings:
@@ -130,7 +197,11 @@ Interactive configuration menu. Run `bekk config` to open the menu.
 | Chunk size   | Average chunk size for deduplication (MiB)          | 1 MiB           |
 | Extra verify | Re-decrypt/decompress each pack before upload       | Enabled         |
 
+> **Note:** The interactive `config` menu offers preset compression levels. You can set any value between `-7` and `22` by editing the config file directly.
+
 `bekk config show` prints all current settings without entering the menu.
+
+`bekk config open` opens the config directory in your file explorer.
 
 #### Password storage
 
@@ -153,16 +224,16 @@ Sync your config and app lists to/from external storage backends (GitHub Gist, S
 
 **`bekk push`** — saves current app lists, then uploads to all enabled backends.
 
-| Flag        | Short | Description                                      |
-| ----------- | ----- | ------------------------------------------------ |
-| `--backend` | `-b`  | Push to a specific backend by name (e.g. `gist`) |
+| Flag        | Short | Description                                                 |
+| ----------- | ----- | ----------------------------------------------------------- |
+| `--backend` | `-b`  | Push to a specific backend by name (e.g. `gist`, `work-r2`) |
 
 **`bekk pull`** — downloads config and app lists from a backend and writes them locally. If multiple backends are enabled and `--backend` is not specified, you will be prompted to choose one.
 
-| Flag        | Short | Description                                        |
-| ----------- | ----- | -------------------------------------------------- |
-| `--backend` | `-b`  | Pull from a specific backend by name (e.g. `gist`) |
-| `--from`    | `-f`  | Identifier override (Gist ID/URL or S3 object key) |
+| Flag        | Short | Description                                                   |
+| ----------- | ----- | ------------------------------------------------------------- |
+| `--backend` | `-b`  | Pull from a specific backend by name (e.g. `gist`, `work-r2`) |
+| `--from`    | `-f`  | Identifier override (Gist ID/URL or S3 object key)            |
 
 To enable a backend, run `bekk gist login` (for Gist) or configure an S3 destination via `bekk config`.
 
@@ -179,10 +250,14 @@ Manage GitHub Gist sync.
 
 ## 🛠️ Stack
 
-- rustic: Backup engine (Rust)
-- Crust: Cross-platform CLI framework
-- Bun: JavaScript runtime
+- [Rustic][rustic]: Backup engine (Rust)
+- [Crust][crust]: Cross-platform CLI framework
+- [Bun][bun]: JavaScript runtime
 
 ## ⚖️ License
 
 MIT
+
+[bun]: https://bun.sh
+[crust]: https://crustjs.com
+[rustic]: https://rustic.cli.rs/

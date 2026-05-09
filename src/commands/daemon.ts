@@ -7,8 +7,9 @@ import { join } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { backupAllApps, formatAppListSummary } from '#lib/apps'
-import { cliLog } from '#lib/log'
-import { resolveRepoPassword } from '#lib/secrets'
+import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
+import { fmtErr } from '#lib/error'
+import { getAppListsDir } from '#lib/paths'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -22,45 +23,36 @@ const appendLog = async (logPath: string, level: 'INFO' | 'ERROR', message: stri
 
 // Run a single backup cycle (same logic as backupCmd but without interactive prompts)
 const runBackupCycle = async (logPath: string) => {
-    const cfg = await configStore.read()
-    const password = await resolveRepoPassword()
-
-    if (!cfg.repoPath || !password) {
-        const msg = !cfg.repoPath ? 'Repository not configured' : 'Repository password not stored'
-        await appendLog(logPath, 'ERROR', msg)
-        return
-    }
-
-    if (cfg.sourcePaths.length === 0) {
-        await appendLog(logPath, 'ERROR', 'No source paths configured')
-        return
-    }
-
-    const appListsDir = join(dataDir('bekk'), 'app-lists')
     try {
-        const result = await backupAllApps(appListsDir)
-        await appendLog(logPath, 'INFO', `App lists saved (${formatAppListSummary(result)})`)
+        await withRepoAuth(async (cfg, password) => {
+            if (cfg.sourcePaths.length === 0) {
+                await appendLog(logPath, 'ERROR', 'No source paths configured')
+                return
+            }
+
+            const appListsDir = getAppListsDir()
+            try {
+                const result = await backupAllApps(appListsDir)
+                await appendLog(
+                    logPath,
+                    'INFO',
+                    `App lists saved (${formatAppListSummary(result)})`,
+                )
+            } catch (err) {
+                await appendLog(logPath, 'ERROR', 'App list backup failed: ' + fmtErr(err))
+            }
+
+            const sources = [...cfg.sourcePaths, appListsDir]
+            const data = unwrapCoreResult(
+                await bekkCore.backup(cfg.repoPath, password, sources, false, undefined),
+            )
+            const snapshotId = data?.snapshot_id ?? 'unknown'
+            await appendLog(logPath, 'INFO', `Backup complete — snapshot ${snapshotId.slice(0, 8)}`)
+        })
     } catch (err) {
-        await appendLog(
-            logPath,
-            'ERROR',
-            'App list backup failed: ' + (err instanceof Error ? err.message : String(err)),
-        )
+        const msg = err instanceof Error ? err.message : String(err)
+        await appendLog(logPath, 'ERROR', msg)
     }
-
-    const sources = [...cfg.sourcePaths, appListsDir]
-    const result = await bekkCore.backup(cfg.repoPath, password, sources, false, undefined)
-
-    if (result.status === 'error') {
-        await appendLog(logPath, 'ERROR', 'Backup failed: ' + result.message)
-        return
-    }
-
-    const snapshotId =
-        result.status === 'ok' && 'data' in result && result.data
-            ? result.data.snapshot_id
-            : 'unknown'
-    await appendLog(logPath, 'INFO', `Backup complete — snapshot ${snapshotId.slice(0, 8)}`)
 }
 
 export const daemonCmd = app
@@ -82,17 +74,14 @@ export const daemonCmd = app
             throw new Error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
         }
 
-        cliLog({
-            messages: [
-                green('✓ ' + bold('bekk daemon started')),
-                dim('  Schedule:  ') + cyan(cfg.cronSchedule),
-                dim('  Next run:  ') + cyan(next.toLocaleString()),
-                dim('  Log file:  ') + dim(logPath),
-                '',
-                yellow('Press Ctrl+C to stop.'),
-            ],
-            padding: { side: 'bottom' },
-        })
+        console.log()
+        console.log(green('✓ ' + bold('bekk daemon started')))
+        console.log(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
+        console.log(dim('  Next run:  ') + cyan(next.toLocaleString()))
+        console.log(dim('  Log file:  ') + dim(logPath))
+        console.log()
+        console.log(yellow('Press Ctrl+C to stop.'))
+        console.log()
 
         await appendLog(logPath, 'INFO', `Daemon started — schedule: ${cfg.cronSchedule}`)
 
@@ -109,7 +98,7 @@ export const daemonCmd = app
                     )
                 }
             } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
+                const msg = fmtErr(err)
                 consola.error(red('Backup error: ') + msg)
                 await appendLog(logPath, 'ERROR', 'Unhandled error: ' + msg)
             }

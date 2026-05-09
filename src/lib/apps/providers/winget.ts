@@ -4,7 +4,71 @@ import { commandExists } from '#lib/shell'
 import type { App, PackageProvider } from '#lib/types'
 
 import { configStore } from '../../../store'
-import { listWinget } from '../legacy'
+
+interface WingetExportPackage {
+    PackageIdentifier: string
+    Version: string
+}
+
+interface WingetExportSource {
+    Packages: WingetExportPackage[]
+    SourceDetails: { Name: string }
+}
+
+interface WingetExportJson {
+    Sources: WingetExportSource[]
+}
+
+const listWinget = async (includeSources: string[]) => {
+    const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${Date.now()}.json`
+    const exportResult = Bun.spawnSync(
+        [
+            'powershell.exe',
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `winget export -o "${tmpFile}" --include-versions --accept-source-agreements --disable-interactivity`,
+        ],
+        { stderr: 'ignore' },
+    )
+
+    if (exportResult.exitCode !== 0) return []
+
+    const file = Bun.file(tmpFile)
+    if (!(await file.exists())) return []
+
+    const text = await file.text()
+    try {
+        await file.delete()
+    } catch {
+        // ignore cleanup errors
+    }
+
+    const data = destr<WingetExportJson>(text)
+    if (!data?.Sources) return []
+
+    const apps: {
+        name: string
+        id: string
+        version: string
+        source: string
+    }[] = []
+
+    for (const source of data.Sources) {
+        const sourceName = source.SourceDetails?.Name ?? ''
+        if (!includeSources.includes(sourceName)) continue
+        for (const pkg of source.Packages) {
+            apps.push({
+                name: pkg.PackageIdentifier,
+                id: pkg.PackageIdentifier,
+                version: pkg.Version,
+                source: sourceName,
+            })
+        }
+    }
+
+    return apps
+}
 
 const defaultSources = ['winget', 'msstore']
 
@@ -25,7 +89,7 @@ export const wingetProvider: PackageProvider = {
     isAvailable: () => commandExists('winget'),
 
     list: async () => {
-        const raw = listWinget(await getWingetSources())
+        const raw = await listWinget(await getWingetSources())
         return raw.map(
             (r) =>
                 ({
@@ -34,9 +98,23 @@ export const wingetProvider: PackageProvider = {
                     source: r.source,
                     meta: {
                         id: r.id,
-                        available: r.available,
                     },
                 }) satisfies App,
         )
+    },
+
+    install: async (app) => {
+        const id = (app.meta?.id as string | undefined) ?? app.name
+        const result = Bun.spawnSync(
+            [
+                'powershell.exe',
+                '-NoProfile',
+                '-NonInteractive',
+                '-Command',
+                `winget install --id "${id}" --exact --accept-source-agreements --disable-interactivity`,
+            ],
+            { stderr: 'pipe' },
+        )
+        return result.exitCode === 0
     },
 }

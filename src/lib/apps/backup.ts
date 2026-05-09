@@ -11,18 +11,31 @@ export const formatAppListSummary = (result: Record<string, App[] | null>, sep =
         .join(sep)
 
 export const backupAllApps = async (
-    destinationRoot: string,
+    destinationRoot: string | undefined,
+    onProgress?: (providerId: string, state: 'start' | 'done' | 'error', count?: number) => void,
 ): Promise<Record<string, App[] | null>> => {
     const providers = getAvailableProviders()
     const result: Record<string, App[] | null> = {}
 
-    for (const p of providers) {
-        const apps = await p.list()
-        result[p.id] = apps
-        if (apps !== null) {
-            await Bun.write(join(destinationRoot, `${p.id}.json`), JSON.stringify(apps, null, 2))
-        }
-    }
+    await Promise.all(
+        providers.map(async (p) => {
+            onProgress?.(p.id, 'start')
+            try {
+                const apps = await p.list()
+                result[p.id] = apps
+                onProgress?.(p.id, 'done', apps?.length ?? 0)
+                if (apps !== null && destinationRoot !== undefined) {
+                    await Bun.write(
+                        join(destinationRoot, `${p.id}.json`),
+                        JSON.stringify(apps, null, 2),
+                    )
+                }
+            } catch {
+                result[p.id] = null
+                onProgress?.(p.id, 'error')
+            }
+        }),
+    )
 
     return result
 }

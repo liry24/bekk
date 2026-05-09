@@ -12,6 +12,10 @@ export const getHostHash = () => {
 }
 
 /**
- * Returns the config filename for this machine: bekk_config_<hosthash>.json
+ * Returns the config filename for this machine: _bekk_config_<hosthash>.json
+ *
+ * The leading underscore ensures the file sorts before `apps_*.json`
+ * alphabetically, so Gist displays it first (Gist uses the first filename
+ * as the gist title).
  */
-export const getConfigFileName = () => `bekk_config_${getHostHash()}.json`
+export const getConfigFileName = () => `_bekk_config_${getHostHash()}.json`

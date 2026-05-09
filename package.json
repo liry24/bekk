@@ -54,6 +54,7 @@
         "@crustjs/validate": "0.0.15",
         "@types/bun": "1.3.13",
         "bumpp": "11.1.0",
+        "cli-spinners": "^3.4.0",
         "consola": "^3.4.2",
         "destr": "^2.0.5",
         "ofetch": "^1.5.1",
