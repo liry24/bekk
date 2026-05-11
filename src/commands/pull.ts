@@ -1,4 +1,5 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
+import { t as styledT, dim as otuiDim } from '@opentui/core'
 import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
@@ -7,7 +8,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
-import { dim, select, createTaskList } from '#lib/ui'
+import { dim, select, createTaskList, writeScrollback } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -110,6 +111,8 @@ export const pullCmd = app
             }
 
             taskList.finish()
-            console.log(dim('  Run `bekk config show` to verify the loaded settings.'))
+            writeScrollback(
+                styledT`${otuiDim('  Run `bekk config show` to verify the loaded settings.')}`,
+            )
         }),
     )

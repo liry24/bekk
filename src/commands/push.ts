@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises'
 
 import { commandValidator, flag } from '@crustjs/validate/zod'
+import { t as styledT, dim as otuiDim } from '@opentui/core'
 import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
@@ -10,7 +11,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { App, SyncData } from '#lib/types'
-import { dim, confirm, createTaskList } from '#lib/ui'
+import { dim, confirm, createTaskList, writeScrollback } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -66,6 +67,7 @@ export const pushCmd = app
 
                 if (shouldBackup) {
                     const backupTask = taskList.add('Backup app lists')
+                    taskList.update(backupTask, 'running')
                     try {
                         const result = await backupAllApps(appListsDir)
                         syncData = { config: cfg, appLists: result }
@@ -80,7 +82,9 @@ export const pushCmd = app
                     }
                 } else {
                     syncData = { config: cfg, appLists: {} }
-                    console.log(dim('Skipping app list backup. Pushing config only.'))
+                    writeScrollback(
+                        styledT`${otuiDim('Skipping app list backup. Pushing config only.')}`,
+                    )
                 }
             }
 
@@ -112,6 +116,7 @@ export const pushCmd = app
             let anyFailed = false
             for (const b of backends) {
                 const taskId = backendTasks[b.label]!
+                taskList.update(taskId, 'running')
                 try {
                     const result = await b.push(syncData!)
                     results[b.label] = result
@@ -124,7 +129,7 @@ export const pushCmd = app
 
             taskList.finish()
             for (const [label, result] of Object.entries(results)) {
-                console.log(dim(`  ${label}: ${result}`))
+                writeScrollback(styledT`${otuiDim(`  ${label}: ${result}`)}`)
             }
             if (anyFailed) process.exitCode = 1
         }),

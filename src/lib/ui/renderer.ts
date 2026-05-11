@@ -1,6 +1,12 @@
 // ─── renderer.ts ─── OpenTUI singleton + footer helpers ─────────────────────
 
-import { createCliRenderer, TextRenderable, type CliRenderer, type KeyEvent } from '@opentui/core'
+import {
+    createCliRenderer,
+    TextRenderable,
+    type CliRenderer,
+    type KeyEvent,
+    type StyledText,
+} from '@opentui/core'
 
 let _renderer: CliRenderer | null = null
 let _initPromise: Promise<CliRenderer> | null = null
@@ -112,6 +118,35 @@ export const clearFooter = (r: CliRenderer): void => {
     }
     r.footerHeight = 1
     r.requestRender()
+}
+
+// Write a single styled line to the OpenTUI scrollback via writeToScrollback, bypassing the
+// createStdoutSnapshotCommits path that incorrectly counts ANSI escape bytes as visible columns.
+// Falls back to plain-text stdout when the renderer is unavailable or has left
+// split-footer mode (e.g. after task-list finish() switches to main-screen).
+export const writeScrollback = (content: StyledText): void => {
+    if (_renderer && !_renderer.isDestroyed) {
+        try {
+            _renderer.writeToScrollback((ctx) => {
+                // Compute visible character count so we can allocate enough rows for
+                // wrapping.  Long strings (e.g. gist URLs) would otherwise be silently
+                // clipped when height is fixed at 1.
+                const visibleLen = content.chunks.reduce((s, c) => s + c.text.length, 0)
+                const height = Math.max(1, Math.ceil(visibleLen / ctx.width))
+                const text = new TextRenderable(ctx.renderContext, {
+                    height,
+                    width: ctx.width,
+                    wrapMode: 'char',
+                    content,
+                })
+                return { root: text, trailingNewline: true }
+            })
+            return
+        } catch {
+            // Renderer may have left split-footer mode; fall through to plain stdout.
+        }
+    }
+    process.stdout.write(content.chunks.map((c) => c.text).join('') + '\n')
 }
 
 export const destroyRenderer = (): void => {

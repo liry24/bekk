@@ -49,6 +49,9 @@ export const cleanCmd = app
 
             try {
                 await withRepoAuth(async (cfg, password) => {
+                    taskList.update(pruneTask, 'running')
+                    taskList.update(checkTask, 'running')
+                    taskList.update(repairTask, 'running')
                     const data = unwrapCoreResult(
                         await bekkCore.clean(
                             cfg.repoPath,
@@ -119,14 +122,14 @@ export const cleanCmd = app
                         }
                     }
                     if (lines.length > 0) {
-                        console.log()
+                        process.stdout.write('\n')
                         drawPanel(lines, {
                             title: flags['dry-run'] ? 'Dry Run Summary' : 'Clean Summary',
                         })
                     }
 
                     if (!flags['dry-run'] && checkData && !checkData.ok) {
-                        console.log()
+                        process.stdout.write('\n')
                         consola.warn(
                             yellow('Repository check found errors. Review the output above.'),
                         )

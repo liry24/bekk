@@ -169,7 +169,7 @@ export const backupCmd = app
                 `${bold('Sources:')}  ${sources.length} path(s)`,
             ]
             if (appSummary) summaryLines.push(`${bold('Apps:')}     ${appSummary}`)
-            console.log()
+            process.stdout.write('\n')
             drawPanel(summaryLines, {
                 title: flags['dry-run'] ? 'Dry Run Complete' : 'Backup Complete',
             })

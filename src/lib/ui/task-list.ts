@@ -1,9 +1,24 @@
 // ─── task-list.ts ─── タスクリスト（リアルタイム更新、OpenTUI footer） ──────
 
-import { TextRenderable } from '@opentui/core'
+import {
+    StyledText,
+    TextRenderable,
+    t as styledT,
+    dim as otuiDim,
+    green as otuiGreen,
+    red as otuiRed,
+    yellow as otuiYellow,
+    type TextChunk,
+} from '@opentui/core'
 
-import { ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
-import { dim, green, red, yellow } from './style'
+import {
+    clearFooter,
+    ensureHintIsLast,
+    getExtraFooterHeight,
+    getRenderer,
+    writeScrollback,
+} from './renderer'
+import { getRandomSpinner } from './spinner'
 
 export type TaskState = 'pending' | 'running' | 'success' | 'error'
 
@@ -12,26 +27,6 @@ interface Task {
     label: string
     state: TaskState
     detail?: string
-}
-
-const formatIcon = (state: TaskState): string => {
-    switch (state) {
-        case 'pending':
-            return dim('○')
-        case 'running':
-            return yellow('◐')
-        case 'success':
-            return green('✔')
-        case 'error':
-            return red('✖')
-    }
-}
-
-const formatTask = (t: Task): string => {
-    const icon = formatIcon(t.state)
-    const label = `${icon} ${t.label}`
-    if (t.detail) return `${label}  ${dim(t.detail)}`
-    return label
 }
 
 export interface TaskListInstance {
@@ -45,25 +40,74 @@ export interface TaskListInstance {
 export const createTaskList = async (): Promise<TaskListInstance> => {
     const r = await getRenderer()
     const tasks: Task[] = []
+    const spinner = getRandomSpinner()
+    let frameIdx = 0
+    // Lazily created on first add() to avoid a blank footer line before any tasks exist.
+    let text: TextRenderable | null = null
 
-    const text = new TextRenderable(r, { height: 1, content: '' })
-    r.root.add(text)
-    ensureHintIsLast(r)
-    r.footerHeight = 1 + getExtraFooterHeight()
-    r.requestRender()
+    // ─── Icon / row builders ─────────────────────────────────────────────────
+    // These live inside the closure so formatIconChunk can read the current frameIdx.
+
+    const formatIconChunk = (state: TaskState): TextChunk => {
+        switch (state) {
+            case 'pending':
+                return otuiDim('○')
+            case 'running':
+                return otuiYellow(spinner.frames[frameIdx % spinner.frames.length]!)
+            case 'success':
+                return otuiGreen('✔')
+            case 'error':
+                return otuiRed('✖')
+        }
+    }
+
+    const formatTaskStyled = (task: Task): StyledText => {
+        const icon = formatIconChunk(task.state)
+        if (task.detail) return styledT`  ${icon} ${task.label}  ${otuiDim(task.detail)}`
+        return styledT`  ${icon} ${task.label}`
+    }
+
+    // ─── Redraw ──────────────────────────────────────────────────────────────
+    // Build a native StyledText so OpenTUI's pixel pipeline sees real glyph
+    // widths. Passing an ANSI string would go through stringToStyledText which
+    // treats escape bytes as literal characters, causing icons to be invisible
+    // and text to appear truncated.
 
     const redraw = () => {
-        if (tasks.length === 0) return
+        if (!text || tasks.length === 0) return
         text.height = tasks.length
         r.footerHeight = tasks.length + getExtraFooterHeight()
-        text.content = tasks.map((t) => `  ${formatTask(t)}`).join('\n')
+        const allChunks: TextChunk[] = []
+        for (let i = 0; i < tasks.length; i++) {
+            if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
+            allChunks.push(...formatTaskStyled(tasks[i]!).chunks)
+        }
+        text.content = new StyledText(allChunks)
         r.requestRender()
+    }
+
+    // Frame callback: advances the spinner animation and redraws the footer.
+    const frameCallback = async (_dt: number) => {
+        frameIdx++
+        redraw()
     }
 
     return {
         add(label: string, detail?: string): string {
             const id = `task_${tasks.length}_${Date.now()}`
             tasks.push({ id, label, state: 'pending', detail })
+
+            // Lazy-init: create the TextRenderable and start live mode on the
+            // first add() call so there is never a blank footer line when the
+            // task list is created but no tasks have been added yet.
+            if (!text) {
+                text = new TextRenderable(r, { height: 1, content: '' })
+                r.root.add(text)
+                ensureHintIsLast(r)
+                r.requestLive()
+                r.setFrameCallback(frameCallback)
+            }
+
             redraw()
             return id
         },
@@ -88,22 +132,16 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
         },
 
         finish(): void {
-            // Print final summary to scrollback with ANSI colors, then clear footer
-            // without triggering an extra re-render that would insert blank lines.
-            const lines = tasks.map((t) => `  ${formatTask(t)}`)
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i]
-                if (line === undefined) continue
-                process.stdout.write(line)
-                if (i < lines.length - 1) process.stdout.write('\n')
+            // Stop the spinner animation before committing final state.
+            r.removeFrameCallback(frameCallback)
+            r.dropLive()
+            // Shrink the footer first so the old footer rows become part of the
+            // main scrollback area.  writeToScrollback places items starting
+            // just above the new footer, which fills the formerly-blank rows.
+            clearFooter(r)
+            for (const task of tasks) {
+                writeScrollback(formatTaskStyled(task))
             }
-            // Remove the footer renderable directly; skip clearFooter's requestRender
-            // so OpenTUI does not paint an empty footer row before shutdown.
-            r.root.remove(text.id)
-            text.destroyRecursively()
-            r.footerHeight = 1
-            // Final newline so the shell prompt starts on the next row.
-            process.stdout.write('\n')
         },
     }
 }

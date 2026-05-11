@@ -65,5 +65,7 @@ export const drawPanel = (content: string[], options: PanelOptions = {}) => {
         colored(BOX.h, borderColor).repeat(innerWidth) +
         colored(BOX.br, borderColor)
 
-    for (const line of [topLine, ...bodyLines, bottomLine]) console.log(line)
+    for (const line of [topLine, ...bodyLines, bottomLine]) {
+        process.stdout.write(line + '\n')
+    }
 }
