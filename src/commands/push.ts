@@ -108,12 +108,14 @@ export const pushCmd = app
                 backendTasks[b.label] = taskList.add(`Push to ${b.label}`)
             }
 
+            const results: Record<string, string> = {}
             let anyFailed = false
             for (const b of backends) {
                 const taskId = backendTasks[b.label]!
                 try {
                     const result = await b.push(syncData!)
-                    taskList.update(taskId, 'success', result)
+                    results[b.label] = result
+                    taskList.update(taskId, 'success')
                 } catch (err) {
                     taskList.update(taskId, 'error', fmtErr(err))
                     anyFailed = true
@@ -121,6 +123,9 @@ export const pushCmd = app
             }
 
             taskList.finish()
+            for (const [label, result] of Object.entries(results)) {
+                console.log(dim(`  ${label}: ${result}`))
+            }
             if (anyFailed) process.exitCode = 1
         }),
     )

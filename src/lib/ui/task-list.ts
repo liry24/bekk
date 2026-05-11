@@ -2,7 +2,7 @@
 
 import { TextRenderable } from '@opentui/core'
 
-import { clearFooter, ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
+import { ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
 import { dim, green, red, yellow } from './style'
 
 export type TaskState = 'pending' | 'running' | 'success' | 'error'
@@ -21,9 +21,9 @@ const formatIcon = (state: TaskState): string => {
         case 'running':
             return yellow('◐')
         case 'success':
-            return green('◉')
+            return green('✔')
         case 'error':
-            return red('✕')
+            return red('✖')
     }
 }
 
@@ -88,11 +88,22 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
         },
 
         finish(): void {
-            // Print final summary to scrollback then clear footer
-            for (const t of tasks) {
-                process.stdout.write(`  ${formatTask(t)}\n`)
+            // Print final summary to scrollback with ANSI colors, then clear footer
+            // without triggering an extra re-render that would insert blank lines.
+            const lines = tasks.map((t) => `  ${formatTask(t)}`)
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i]
+                if (line === undefined) continue
+                process.stdout.write(line)
+                if (i < lines.length - 1) process.stdout.write('\n')
             }
-            clearFooter(r)
+            // Remove the footer renderable directly; skip clearFooter's requestRender
+            // so OpenTUI does not paint an empty footer row before shutdown.
+            r.root.remove(text.id)
+            text.destroyRecursively()
+            r.footerHeight = 1
+            // Final newline so the shell prompt starts on the next row.
+            process.stdout.write('\n')
         },
     }
 }
