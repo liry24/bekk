@@ -1,6 +1,5 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import { t as styledT, dim as otuiDim } from '@opentui/core'
-import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
@@ -8,7 +7,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
-import { dim, select, createTaskList, writeScrollback } from '#lib/ui'
+import { dim, select, createTaskList, writeScrollback, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -34,7 +33,7 @@ export const pullCmd = app
             const allBackends = await getEnabledBackends()
 
             if (allBackends.length === 0) {
-                consola.error(
+                writeString(
                     'No sync backends are enabled. ' +
                         dim('Run `bekk init` or `bekk gist login` to set one up.'),
                 )
@@ -59,13 +58,14 @@ export const pullCmd = app
             }
 
             if (!backend) {
-                consola.error(`No backend named "${flags.backend}" is enabled.`)
+                writeString(`No backend named "${flags.backend}" is enabled.`)
                 process.exitCode = 1
                 return
             }
 
             const taskList = await createTaskList()
             const pullTask = taskList.add(`Pull from ${backend.label}`)
+            taskList.update(pullTask, 'running')
 
             let syncData: SyncData | undefined
 
@@ -88,6 +88,7 @@ export const pullCmd = app
 
             // Write config locally
             const writeTask = taskList.add('Write local files')
+            taskList.update(writeTask, 'running')
             try {
                 await configStore.write(syncData.config)
 

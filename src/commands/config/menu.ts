@@ -13,11 +13,11 @@ export interface MenuOptions<T extends string> {
     onBack?: () => Promise<void>
 }
 
-export async function runMenu<T extends string>(
+export const runMenu = async <T extends string>(
     message: string,
     getItems: () => Promise<MenuItem<T>[]> | MenuItem<T>[],
     options?: MenuOptions<T>,
-): Promise<void> {
+) => {
     const backValue = options?.backValue
     let action: T | undefined
 
@@ -32,18 +32,11 @@ export async function runMenu<T extends string>(
             })),
         )
 
-        action = await select<T>({
-            message,
-            choices,
-        })
+        action = await select<T>({ message, choices })
 
         const item = items.find((i) => i.value === action)
-        if (item && item.handler && !item.disabled && action !== backValue) {
-            await item.handler()
-        }
+        if (item && item.handler && !item.disabled && action !== backValue) await item.handler()
     } while (action !== backValue)
 
-    if (action === backValue && options?.onBack) {
-        await options.onBack()
-    }
+    if (action === backValue && options?.onBack) await options.onBack()
 }

@@ -1,10 +1,9 @@
-import consola from 'consola'
 import { destr } from 'destr'
 
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
 import { deleteS3SecretAccessKey, setS3SecretAccessKey } from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
-import { bold, cyan, dim, green, input, multiselect, password, confirm } from '#lib/ui'
+import { bold, cyan, dim, green, input, multiselect, password, confirm, writeString } from '#lib/ui'
 
 import { authStore, configStore } from '../../store'
 import { runMenu, type MenuItem } from './menu'
@@ -81,7 +80,7 @@ const configureS3Destinations = async () => {
                     await configStore.patch({ s3DestinationsJson: JSON.stringify(updated) })
                     await setS3SecretAccessKey(dest.name, secretAccessKey)
 
-                    consola.success(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
+                    writeString(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
                 },
             })
             if (destinations.length > 0) {
@@ -90,7 +89,7 @@ const configureS3Destinations = async () => {
                     value: 'remove',
                     handler: async () => {
                         if (destinations.length === 0) {
-                            consola.info(dim('No S3 destinations configured.'))
+                            writeString(dim('No S3 destinations configured.'))
                             return
                         }
                         const toRemove = await multiselect<string>({
@@ -106,7 +105,7 @@ const configureS3Destinations = async () => {
                             for (const name of toRemove) {
                                 await deleteS3SecretAccessKey(name)
                             }
-                            consola.success(green(`Removed ${toRemove.length} destination(s).`))
+                            writeString(green(`Removed ${toRemove.length} destination(s).`))
                         }
                     },
                 })
@@ -148,7 +147,7 @@ export const configureSyncBackends = async () => {
                             })
                             if (ok) {
                                 await configStore.patch({ gistEnabled: false })
-                                consola.success(green('Gist sync disabled.'))
+                                writeString(green('Gist sync disabled.'))
                             }
                         } else {
                             const ok = await confirm({
@@ -157,14 +156,14 @@ export const configureSyncBackends = async () => {
                             })
                             if (ok) {
                                 if (!token) {
-                                    consola.info(
+                                    writeString(
                                         'Authentication required. Starting GitHub Device Flow...',
                                     )
                                     const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
                                     await authStore.patch({ token: newToken })
                                 }
                                 await configStore.patch({ gistEnabled: true })
-                                consola.success(green('Gist sync enabled.'))
+                                writeString(green('Gist sync enabled.'))
                             }
                         }
                     },

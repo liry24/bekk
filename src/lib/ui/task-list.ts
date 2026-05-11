@@ -42,6 +42,7 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
     const tasks: Task[] = []
     const spinner = getRandomSpinner()
     let frameIdx = 0
+    let finished = false
     // Lazily created on first add() to avoid a blank footer line before any tasks exist.
     let text: TextRenderable | null = null
 
@@ -132,6 +133,8 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
         },
 
         finish(): void {
+            if (finished) return
+            finished = true
             // Stop the spinner animation before committing final state.
             r.removeFrameCallback(frameCallback)
             r.dropLive()

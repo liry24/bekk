@@ -8,9 +8,8 @@ import {
     TextRenderable,
 } from '@opentui/core'
 
-import { getRenderer, clearFooter } from './renderer'
+import { getRenderer, clearFooter, writeString } from './renderer'
 import { getRandomSpinner } from './spinner'
-import { dim, bold } from './style'
 
 // ─── CancelledError ──────────────────────────────────────────────────────────
 
@@ -50,15 +49,27 @@ export interface InputOptions {
 
 export const input = async (options: InputOptions): Promise<string> => {
     const r = await getRenderer()
+    const { message, default: defaultValue, placeholder, validate } = options
 
     return new Promise<string>((resolve, reject) => {
-        const cancelHandler = withCancelHandler(r, reject)
+        let settled = false
+        const cleanup = () => {
+            if (settled) return
+            settled = true
+            r.removeInputHandler(cancelHandler)
+            clearFooter(r)
+        }
 
-        const label = new TextRenderable(r, { height: 1, content: `  ${bold(options.message)}  ` })
+        const cancelHandler = withCancelHandler(r, (err) => {
+            cleanup()
+            reject(err)
+        })
+
+        const label = new TextRenderable(r, { height: 1, content: `  ${message}  ` })
         const field = new InputRenderable(r, {
             flexGrow: 1,
-            value: options.default ?? '',
-            placeholder: options.placeholder ?? '',
+            value: defaultValue ?? '',
+            placeholder: placeholder ?? '',
         })
         const hint = new TextRenderable(r, { height: 1, content: '' })
 
@@ -66,19 +77,18 @@ export const input = async (options: InputOptions): Promise<string> => {
         r.root.add(field)
         r.root.add(hint)
         r.footerHeight = 3
-        r.focusRenderable(field)
+        field.focus()
         r.requestRender()
 
         const onEnter = async () => {
             const val = field.value
-            const validation = options.validate ? await options.validate(val) : true
+            const validation = validate ? await validate(val) : true
             if (validation !== true) {
-                hint.content = `  ${dim(validation)}`
+                hint.content = `  ${validation}`
                 r.requestRender()
                 return
             }
-            r.removeInputHandler(cancelHandler)
-            clearFooter(r)
+            cleanup()
             resolve(val)
         }
 
@@ -95,15 +105,28 @@ export interface PasswordOptions {
 
 export const password = async (options: PasswordOptions): Promise<string> => {
     const r = await getRenderer()
+    const { message, validate } = options
 
     return new Promise<string>((resolve, reject) => {
-        const cancelHandler = withCancelHandler(r, reject)
-
+        let settled = false
         let value = ''
+
+        const cleanup = () => {
+            if (settled) return
+            settled = true
+            r.removeInputHandler(cancelHandler)
+            r.removeInputHandler(keyHandler)
+            clearFooter(r)
+        }
+
+        const cancelHandler = withCancelHandler(r, (err) => {
+            cleanup()
+            reject(err)
+        })
 
         const label = new TextRenderable(r, {
             height: 1,
-            content: `  ${bold(options.message)}  `,
+            content: `  ${message}  `,
         })
         const display = new TextRenderable(r, { height: 1, content: '  ' })
         const hint = new TextRenderable(r, { height: 1, content: '' })
@@ -120,17 +143,14 @@ export const password = async (options: PasswordOptions): Promise<string> => {
         }
 
         const keyHandler = (seq: string): boolean => {
-            // Ctrl+C / Escape already handled by cancelHandler which runs first
             if (seq === '\r' || seq === '\n') {
-                const validation = options.validate ? options.validate(value) : true
+                const validation = validate ? validate(value) : true
                 if (validation !== true) {
-                    hint.content = `  ${dim(validation)}`
+                    hint.content = `  ${validation}`
                     r.requestRender()
                     return true
                 }
-                r.removeInputHandler(cancelHandler)
-                r.removeInputHandler(keyHandler)
-                clearFooter(r)
+                cleanup()
                 resolve(value)
                 return true
             }
@@ -139,7 +159,6 @@ export const password = async (options: PasswordOptions): Promise<string> => {
                 refresh()
                 return true
             }
-            // Printable chars only
             if (seq.length === 1 && seq >= ' ') {
                 value += seq
                 refresh()
@@ -161,57 +180,15 @@ export interface ConfirmOptions {
     inactive?: string
 }
 
-export const confirm = async (options: ConfirmOptions): Promise<boolean> => {
-    const r = await getRenderer()
-
-    return new Promise<boolean>((resolve, reject) => {
-        const cancelHandler = withCancelHandler(r, reject)
-
-        const active = options.active ?? 'Yes'
-        const inactive = options.inactive ?? 'No'
-        let current = options.default ?? true
-
-        const text = new TextRenderable(r, { height: 2, content: '' })
-
-        const refresh = () => {
-            const yes = current ? bold(`› ${active}`) : `  ${active}`
-            const no = !current ? bold(`› ${inactive}`) : `  ${inactive}`
-            text.content = `  ${bold(options.message)}\n${yes}   ${no}`
-            r.requestRender()
-        }
-
-        r.root.add(text)
-        r.footerHeight = 2
-        refresh()
-
-        const keyHandler = (seq: string): boolean => {
-            if (seq === '\r' || seq === '\n') {
-                r.removeInputHandler(cancelHandler)
-                r.removeInputHandler(keyHandler)
-                clearFooter(r)
-                resolve(current)
-                return true
-            }
-            if (seq === '\x1b[A' || seq === '\x1b[D' || seq === '\x1b[B' || seq === '\x1b[C') {
-                current = !current
-                refresh()
-                return true
-            }
-            if (seq === 'y' || seq === 'Y') {
-                current = true
-                refresh()
-                return true
-            }
-            if (seq === 'n' || seq === 'N') {
-                current = false
-                refresh()
-                return true
-            }
-            return false
-        }
-        r.prependInputHandler(keyHandler)
+export const confirm = async (options: ConfirmOptions) =>
+    select<boolean>({
+        message: options.message,
+        choices: [
+            { label: options.active ?? 'Yes', value: true },
+            { label: options.inactive ?? 'No', value: false },
+        ],
+        default: options.default ?? true,
     })
-}
 
 // ─── select ──────────────────────────────────────────────────────────────────
 
@@ -225,46 +202,66 @@ export interface SelectOptions<T> {
     message: string
     choices: SelectChoice<T>[]
     default?: T
+    showDescription?: boolean
+    wrapSelection?: boolean
 }
 
 export const select = async <T = string>(options: SelectOptions<T>): Promise<T> => {
     const r = await getRenderer()
+    const {
+        message,
+        choices,
+        default: defaultValue,
+        showDescription = true,
+        wrapSelection = true,
+    } = options
 
     return new Promise<T>((resolve, reject) => {
-        const cancelHandler = withCancelHandler(r, reject)
+        let settled = false
+        const cleanup = () => {
+            if (settled) return
+            settled = true
+            r.removeInputHandler(cancelHandler)
+            clearFooter(r)
+        }
 
-        const selectOptions = options.choices.map((c) => ({
+        const cancelHandler = withCancelHandler(r, (err) => {
+            cleanup()
+            reject(err)
+        })
+
+        const selectOptions = choices.map((c) => ({
             name: c.label,
             description: c.hint ?? '',
             value: c.value,
         }))
 
         const defaultIdx =
-            options.default !== undefined
-                ? options.choices.findIndex((c) => c.value === options.default)
-                : 0
+            defaultValue !== undefined ? choices.findIndex((c) => c.value === defaultValue) : 0
 
-        const label = new TextRenderable(r, { height: 1, content: `  ${bold(options.message)}` })
+        const label = new TextRenderable(r, { height: 1, content: `  ${message}` })
         const sel = new SelectRenderable(r, {
             options: selectOptions,
             selectedIndex: defaultIdx >= 0 ? defaultIdx : 0,
-            height: Math.min(options.choices.length, 10),
-            showDescription: true,
-            wrapSelection: true,
+            width: r.width,
+            height: Math.min(choices.length, 10),
+            showDescription,
+            wrapSelection,
         })
 
         r.root.add(label)
         r.root.add(sel)
-        r.footerHeight = 1 + Math.min(options.choices.length, 10)
-        r.focusRenderable(sel)
+        r.footerHeight = 1 + Math.min(choices.length, 10)
+        sel.focus()
         r.requestRender()
 
-        sel.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+        const onSelect = () => {
             const opt = sel.getSelectedOption()
-            r.removeInputHandler(cancelHandler)
-            clearFooter(r)
+            cleanup()
             resolve(opt?.value as T)
-        })
+        }
+
+        sel.on(SelectRenderableEvents.ITEM_SELECTED, onSelect)
     })
 }
 
@@ -278,25 +275,38 @@ export interface MultiselectOptions<T> {
 
 export const multiselect = async <T = string>(options: MultiselectOptions<T>): Promise<T[]> => {
     const r = await getRenderer()
+    const { message, choices, default: defaultValue } = options
 
     return new Promise<T[]>((resolve, reject) => {
-        const cancelHandler = withCancelHandler(r, reject)
-
+        let settled = false
         const selected = new Set<number>(
-            (options.default ?? [])
-                .map((d) => options.choices.findIndex((c) => c.value === d))
+            (defaultValue ?? [])
+                .map((d) => choices.findIndex((c) => c.value === d))
                 .filter((i) => i >= 0),
         )
 
         let cursor = 0
-        const count = options.choices.length
+        const count = choices.length
         const visibleLines = Math.min(count, 10)
 
-        const label = new TextRenderable(r, { height: 1, content: `  ${bold(options.message)}` })
+        const cleanup = () => {
+            if (settled) return
+            settled = true
+            r.removeInputHandler(cancelHandler)
+            r.removeInputHandler(keyHandler)
+            clearFooter(r)
+        }
+
+        const cancelHandler = withCancelHandler(r, (err) => {
+            cleanup()
+            reject(err)
+        })
+
+        const label = new TextRenderable(r, { height: 1, content: `  ${message}` })
         const body = new TextRenderable(r, { height: visibleLines, content: '' })
         const footer = new TextRenderable(r, {
             height: 1,
-            content: dim('  ↑↓ move  Space select  Enter confirm'),
+            content: '  ↑↓ move  Space select  Enter confirm',
         })
 
         r.root.add(label)
@@ -308,16 +318,16 @@ export const multiselect = async <T = string>(options: MultiselectOptions<T>): P
         const refresh = () => {
             const lines: string[] = []
             for (let i = 0; i < count; i++) {
-                const choice = options.choices[i]!
+                const choice = choices[i]!
                 const isCursor = i === cursor
                 const isSel = selected.has(i)
                 const check = isSel ? '[x]' : '[ ]'
-                const arrow = isCursor ? '›' : ' '
-                const hint = choice.hint ? dim(`  ${choice.hint}`) : ''
-                const label = isCursor
-                    ? bold(`${arrow} ${check} ${choice.label}`)
+                const arrow = isCursor ? '>' : ' '
+                const hint = choice.hint ? `  ${choice.hint}` : ''
+                const lbl = isCursor
+                    ? `${arrow} ${check} ${choice.label}`
                     : `${arrow} ${check} ${choice.label}`
-                lines.push(`  ${label}${hint}`)
+                lines.push(`  ${lbl}${hint}`)
             }
             body.content = lines.join('\n')
             r.requestRender()
@@ -326,12 +336,10 @@ export const multiselect = async <T = string>(options: MultiselectOptions<T>): P
 
         const keyHandler = (seq: string): boolean => {
             if (seq === '\r' || seq === '\n') {
-                r.removeInputHandler(cancelHandler)
-                r.removeInputHandler(keyHandler)
-                clearFooter(r)
+                cleanup()
                 const result = Array.from(selected)
                     .sort((a, b) => a - b)
-                    .map((i) => options.choices[i]!.value)
+                    .map((i) => choices[i]!.value)
                 resolve(result)
                 return true
             }
@@ -369,13 +377,14 @@ export interface SpinnerOptions {
 export const spinner = async (options: SpinnerOptions): Promise<void> => {
     const r = await getRenderer()
     const sp = getRandomSpinner()
+    const { message, task } = options
 
     const text = new TextRenderable(r, { height: 1, content: '' })
     r.root.add(text)
     r.footerHeight = 1
 
     let frameIdx = 0
-    let currentMessage = options.message
+    let currentMessage = message
 
     const updateMessage = (msg: string) => {
         currentMessage = msg
@@ -392,10 +401,9 @@ export const spinner = async (options: SpinnerOptions): Promise<void> => {
     r.setFrameCallback(frameCallback)
 
     try {
-        await options.task({ updateMessage })
-        // Print final state to scrollback
+        await task({ updateMessage })
         const frame = sp.frames[frameIdx % sp.frames.length]!
-        process.stdout.write(`  ${frame} ${currentMessage}\n`)
+        writeString(`  ${frame} ${currentMessage}`)
     } finally {
         r.removeFrameCallback(frameCallback)
         r.dropLive()

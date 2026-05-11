@@ -1,4 +1,3 @@
-import consola from 'consola'
 import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
@@ -17,6 +16,7 @@ import {
     password,
     select,
     spinner,
+    writeString,
 } from '#lib/ui'
 
 import { app } from '../app'
@@ -25,7 +25,7 @@ import { authStore, configStore } from '../store'
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 async function collectSourcePaths(): Promise<string[]> {
-    consola.info(dim('Enter source paths to back up (leave empty to finish):'))
+    writeString(dim('Enter source paths to back up (leave empty to finish):'))
     const sourcePaths: string[] = []
     while (true) {
         const raw = await input({
@@ -37,9 +37,9 @@ async function collectSourcePaths(): Promise<string[]> {
         const path = normalize(trimmed)
         if (!sourcePaths.includes(path)) {
             sourcePaths.push(path)
-            consola.success(green(`Added: ${bold(path)}`))
+            writeString(green(`Added: ${bold(path)}`))
         } else {
-            consola.info(dim('Already added.'))
+            writeString(dim('Already added.'))
         }
     }
     return sourcePaths
@@ -49,8 +49,8 @@ async function collectS3Destinations(): Promise<S3Destination[]> {
     const destinations: S3Destination[] = []
     let addMore = true
     while (addMore) {
-        console.log()
-        console.log(bold('Add S3 destination'))
+        writeString('')
+        writeString(bold('Add S3 destination'))
 
         const defaultName = 's3'
         const name = await input({
@@ -100,7 +100,7 @@ async function collectS3Destinations(): Promise<S3Destination[]> {
         destinations.push(dest)
         await setS3SecretAccessKey(dest.name, secretAccessKey)
 
-        consola.success(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
+        writeString(green(`S3 destination ${cyan(bold(dest.name))} configured.`))
 
         addMore = await select<boolean>({
             message: 'Add another S3 destination?',
@@ -162,11 +162,11 @@ export const initCmd = app
 
         const existing = await configStore.read()
         if (existing.repoPath) {
-            console.log(yellow(bold('Backup is already configured.')))
-            console.log(
+            writeString(yellow(bold('Backup is already configured.')))
+            writeString(
                 dim('Running init again will walk through setup and reinitialize the repo.'),
             )
-            console.log(dim(`Current repo: ${existing.repoPath}`))
+            writeString(dim(`Current repo: ${existing.repoPath}`))
 
             const shouldReinitialize = await confirm({
                 message: 'Run init again and reinitialize the backup destination?',
@@ -199,8 +199,8 @@ export const initCmd = app
                 validate: (v) => (v.trim() ? true : 'Path is required'),
             })
         } else {
-            console.log(dim('  rclone remote paths look like:  myremote:bucket/folder'))
-            console.log(dim('  Run `rclone config` to manage remotes.'))
+            writeString(dim('  rclone remote paths look like:  myremote:bucket/folder'))
+            writeString(dim('  Run `rclone config` to manage remotes.'))
             repoPath = await input({
                 message: 'rclone path  (e.g. myremote:bucket/bekk)',
                 validate: (v) => (v.trim() ? true : 'Path is required'),
@@ -213,10 +213,10 @@ export const initCmd = app
 
         const { password: resolvedPassword, wasGenerated } = await promptPassword(password)
 
-        console.log()
-        console.log(dim('Your password will be stored in the OS credential manager.'))
-        console.log(dim('⚠ Saving to config makes it available for scripts,'))
-        console.log(dim('but the password will be synced as plaintext to any enabled storage.'))
+        writeString('')
+        writeString(dim('Your password will be stored in the OS credential manager.'))
+        writeString(dim('⚠ Saving to config makes it available for scripts,'))
+        writeString(dim('but the password will be synced as plaintext to any enabled storage.'))
         const savePasswordInConfig = await confirm({
             message: 'Also save password to config file?',
             default: false,
@@ -241,9 +241,9 @@ export const initCmd = app
         const sameConfiguredRepo = existing.repoPath !== '' && normalizedRepo === existing.repoPath
 
         if (sameConfiguredRepo) {
-            console.log()
-            console.log(yellow(bold('Warning: the selected repo is already configured.')))
-            console.log(
+            writeString('')
+            writeString(yellow(bold('Warning: the selected repo is already configured.')))
+            writeString(
                 dim(
                     'Reinitializing the same repo directory will remove its current repository data.',
                 ),
@@ -259,10 +259,10 @@ export const initCmd = app
             if (!shouldReuseRepo) return
         }
 
-        console.log()
-        console.log(dim('You can optionally sync your config and app lists to Gist or S3.'))
-        console.log(dim('You can skip this and set it up later with `bekk gist login`.'))
-        console.log()
+        writeString('')
+        writeString(dim('You can optionally sync your config and app lists to Gist or S3.'))
+        writeString(dim('You can skip this and set it up later with `bekk gist login`.'))
+        writeString('')
 
         const backendChoices = await multiselect<'gist' | 's3'>({
             message: 'Enable sync backends (space to toggle, enter to confirm)',
@@ -280,7 +280,7 @@ export const initCmd = app
             if (token) {
                 gistEnabled = true
             } else {
-                consola.info(
+                writeString(
                     'Not authenticated with GitHub. ' +
                         dim('Run `bekk gist login` to enable Gist sync.'),
                 )
@@ -306,8 +306,8 @@ export const initCmd = app
             sameConfiguredRepo,
         }
 
-        console.log()
-        drawPanel(buildPreviewLines(setup), { title: 'Setup Preview' })
+        writeString('')
+        await drawPanel(buildPreviewLines(setup), { title: 'Setup Preview' })
 
         const confirmed = await confirm({
             message: 'Create backup destination with these settings?',
@@ -316,7 +316,7 @@ export const initCmd = app
             inactive: 'No  (cancel)',
         })
         if (!confirmed) {
-            consola.info(dim('Setup cancelled.'))
+            writeString(dim('Setup cancelled.'))
             return
         }
 
@@ -347,24 +347,24 @@ export const initCmd = app
             })
         }
 
-        console.log()
-        consola.success(green(bold('Backup setup complete')))
+        writeString('')
+        writeString(green(bold('Backup setup complete')))
 
         if (wasGenerated) {
-            console.log()
-            console.log(
+            writeString('')
+            writeString(
                 yellow(bold('Auto-generated backup password:')) +
                     ' ' +
                     cyan(bold(resolvedPassword)),
             )
-            console.log(dim('This password is stored in your OS credential manager.'))
-            console.log(dim('⚠  Keep a copy somewhere safe — it is required to restore backups.'))
+            writeString(dim('This password is stored in your OS credential manager.'))
+            writeString(dim('⚠  Keep a copy somewhere safe — it is required to restore backups.'))
         }
 
-        console.log()
-        console.log(dim('Manage sources:      ') + bold('bekk config'))
-        console.log(dim('Run backup:          ') + bold('bekk backup'))
-        console.log(
+        writeString('')
+        writeString(dim('Manage sources:      ') + bold('bekk config'))
+        writeString(dim('Run backup:          ') + bold('bekk backup'))
+        writeString(
             gistEnabled
                 ? dim('Push to sync:        ') + bold('bekk push')
                 : dim('Set up Gist sync:    ') + bold('bekk gist login'),

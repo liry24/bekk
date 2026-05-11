@@ -1,13 +1,12 @@
 import { homedir } from 'node:os'
 
 import { promptValidator } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
 import { fmtErr } from '#lib/error'
 import { isAdmin } from '#lib/platform'
-import { confirm, input, bold, cyan, dim, green, red, yellow } from '#lib/ui'
+import { confirm, input, bold, cyan, dim, green, red, yellow, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -222,7 +221,7 @@ const registerCmd = app
             else if (process.platform === 'darwin') await registerMacOS(exePath, admin)
             else await registerLinux(exePath, admin)
         } catch (err) {
-            consola.error(red('Failed to register startup task: ') + fmtErr(err))
+            writeString(red('Failed to register startup task: ') + fmtErr(err))
             process.exit(1)
         }
 
@@ -257,7 +256,7 @@ const unregisterCmd = app
             else if (process.platform === 'darwin') await unregisterMacOS(admin)
             else await unregisterLinux(admin)
         } catch (err) {
-            consola.error(red('Failed to remove startup task: ') + fmtErr(err))
+            writeString(red('Failed to remove startup task: ') + fmtErr(err))
             process.exit(1)
         }
 
@@ -275,7 +274,7 @@ const statusCmd = app
         const cfg = await configStore.read()
 
         if (!cfg.cronSchedule) {
-            consola.info('No schedule configured. Run ' + cyan('bekk schedule register') + '.')
+            writeString('No schedule configured. Run ' + cyan('bekk schedule register') + '.')
             return
         }
 

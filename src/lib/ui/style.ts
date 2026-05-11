@@ -1,6 +1,8 @@
-// ─── style.ts ─── ANSI string formatters ────────────────────────────────────
-// Plain escape-code wrappers that return strings (not TextChunk / StyledText),
-// so they can be safely used in console.log() and in TextRenderable.content.
+// ─── style.ts ─── ANSI formatters + layout utilities ─────────────────────────
+// These ANSI wrappers are intentionally kept as the canonical way to style
+// strings before passing them to writeString().  OpenTUI's stringToStyledText
+// parses the escape codes into native TextChunks so the output is still fully
+// native.
 
 const ESC = '\x1b['
 
@@ -13,13 +15,43 @@ export const yellow = (s: string): string => `${ESC}33m${s}${ESC}0m`
 export const cyan = (s: string): string => `${ESC}36m${s}${ESC}0m`
 export const blue = (s: string): string => `${ESC}34m${s}${ESC}0m`
 
-// ─── stripAnsi ───────────────────────────────────────────────────────────────
-// Strips ANSI escape codes from a string for width calculation.
-
 // Build ANSI regex without a literal ESC char to satisfy no-control-regex.
 const ANSI_RE = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*[A-Za-z]', 'g')
 
 export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '')
+
+export const padStart = (s: string, len: number): string => {
+    const visibleLen = stripAnsi(s).length
+    if (visibleLen >= len) return s
+    return ' '.repeat(len - visibleLen) + s
+}
+
+export const wrapLines = (text: string, maxWidth: number): string[] => {
+    const lines: string[] = []
+    for (const line of text.split('\n')) {
+        const visible = stripAnsi(line)
+        if (visible.length <= maxWidth) {
+            lines.push(line)
+            continue
+        }
+        let current = ''
+        let currentVisible = 0
+        for (const char of line) {
+            const charVisible = char.charCodeAt(0) === 0x1b ? 0 : 1
+            const nextVisible = currentVisible + (charVisible || stripAnsi(char).length)
+            if (nextVisible > maxWidth && currentVisible > 0) {
+                lines.push(current)
+                current = char
+                currentVisible = charVisible || stripAnsi(char).length
+            } else {
+                current += char
+                currentVisible = nextVisible
+            }
+        }
+        if (current) lines.push(current)
+    }
+    return lines
+}
 
 // ─── orderedList() ───────────────────────────────────────────────────────────
 // Renders items as a numbered list (1. ..., 2. ...).

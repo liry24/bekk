@@ -1,5 +1,4 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { destr } from 'destr'
 import { join } from 'pathe'
 import { z } from 'zod'
@@ -18,6 +17,7 @@ import {
     multiselect,
     createTaskList,
     drawPanel,
+    writeString,
 } from '#lib/ui'
 
 import { app } from '../app'
@@ -46,20 +46,20 @@ const appsListCmd = app
     .run(async () => {
         const providers = getAvailableProviders()
         if (providers.length === 0) {
-            consola.info('No package managers available on this platform.')
+            writeString('No package managers available on this platform.')
             return
         }
 
         for (const provider of providers) {
             const apps = await provider.list()
             if (apps === null || apps.length === 0) {
-                console.log(dim(`${provider.name}: (no apps found)`))
+                writeString(dim(`${provider.name}: (no apps found)`))
                 continue
             }
-            console.log()
-            console.log(bold(provider.name))
+            writeString('')
+            writeString(bold(provider.name))
             for (const a of apps) {
-                console.log(`  ${cyan(a.name)} ${dim(a.version)}`)
+                writeString(`  ${cyan(a.name)} ${dim(a.version)}`)
             }
         }
     })
@@ -73,7 +73,7 @@ const appsBackupCmd = app
     .run(async () => {
         const providers = getAvailableProviders()
         if (providers.length === 0) {
-            consola.info('No package managers available on this platform.')
+            writeString('No package managers available on this platform.')
             return
         }
 
@@ -90,8 +90,8 @@ const appsBackupCmd = app
         })
 
         taskList.finish()
-        console.log()
-        console.log(`${green(bold('◉'))} App list backup  ${dim(formatAppListSummary(result))}`)
+        writeString('')
+        writeString(`${green(bold('◉'))} App list backup  ${dim(formatAppListSummary(result))}`)
     })
 
 // ─── apps restore ────────────────────────────────────────────────────────────
@@ -110,18 +110,18 @@ const appsRestoreCmd = app
         commandValidator(async ({ flags }) => {
             const providers = getAvailableProviders()
             if (providers.length === 0) {
-                consola.info('No package managers available on this platform.')
+                writeString('No package managers available on this platform.')
                 return
             }
 
             const backup = await loadBackupAppLists()
             const hasAnyBackup = Object.values(backup).some((v) => v !== null && v.length > 0)
             if (!hasAnyBackup) {
-                consola.error('No backed-up app lists found. Run `bekk apps backup` first.')
+                writeString(red('No backed-up app lists found. Run `bekk apps backup` first.'))
                 return
             }
 
-            console.log(dim('Analyzing backup against current environment...'))
+            writeString(dim('Analyzing backup against current environment...'))
             const analysis = await analyzeApps(backup, providers)
 
             // Show summary
@@ -137,24 +137,24 @@ const appsRestoreCmd = app
                     summaryLines.push(`  ${yellow('Vanished:')}         ${a.vanished.length}`)
                 }
             }
-            console.log()
-            drawPanel(summaryLines, { title: 'Restore Analysis' })
+            writeString('')
+            await drawPanel(summaryLines, { title: 'Restore Analysis' })
 
             // Show vanished warnings
             for (const a of analysis) {
                 if (a.vanished.length === 0) continue
                 const provider = providers.find((p) => p.id === a.providerId)
-                console.log()
-                console.log(yellow(bold(`⚠ Vanished from ${provider?.name ?? a.providerId}`)))
-                console.log(dim('These packages are no longer available and cannot be installed:'))
+                writeString('')
+                writeString(yellow(bold(`⚠ Vanished from ${provider?.name ?? a.providerId}`)))
+                writeString(dim('These packages are no longer available and cannot be installed:'))
                 for (const app of a.vanished) {
-                    console.log(`  ${red(app.name)} ${dim(app.version)}`)
+                    writeString(`  ${red(app.name)} ${dim(app.version)}`)
                 }
             }
 
             if (flags['dry-run']) {
-                console.log()
-                consola.info(dim('Dry run — no changes were made.'))
+                writeString('')
+                writeString(dim('Dry run — no changes were made.'))
                 return
             }
 
@@ -200,13 +200,13 @@ const appsRestoreCmd = app
                 toUpdate.reduce((s, g) => s + g.apps.length, 0)
 
             if (totalActions === 0) {
-                console.log()
-                consola.info('No apps selected for installation.')
+                writeString('')
+                writeString('No apps selected for installation.')
                 return
             }
 
             // Execute installations
-            console.log()
+            writeString('')
             const taskList = await createTaskList()
             let totalSucceeded = 0
             let totalFailed = 0
@@ -228,8 +228,8 @@ const appsRestoreCmd = app
             }
 
             taskList.finish()
-            console.log()
-            console.log(
+            writeString('')
+            writeString(
                 `${green(bold('◉'))} Restore complete  ${green(`${totalSucceeded} succeeded`)}${totalFailed > 0 ? `, ${red(`${totalFailed} failed`)}` : ''}`,
             )
         }),

@@ -1,4 +1,3 @@
-import consola from 'consola'
 import { normalize } from 'pathe'
 
 import { changeRepoPassword, promptPassword, resolveRepoPassword } from '#lib/secrets'
@@ -7,12 +6,14 @@ import {
     dim,
     green,
     yellow,
+    red,
     input,
     multiselect,
     password,
     spinner,
     confirm,
     select,
+    writeString,
 } from '#lib/ui'
 
 import { configStore } from '../../store'
@@ -26,7 +27,7 @@ export const configureDestination = async () => {
     })
     const path = normalize(raw.trim())
     await configStore.patch({ repoPath: path })
-    consola.success(green(`Backup destination set: ${bold(path)}`))
+    writeString(green(`Backup destination set: ${bold(path)}`))
 }
 
 export const configureSources = async () => {
@@ -48,7 +49,7 @@ export const configureSources = async () => {
     })
 
     if (action === 'add') {
-        consola.info(dim('Enter paths to add (leave blank to finish):'))
+        writeString(dim('Enter paths to add (leave blank to finish):'))
         while (true) {
             const raw = await input({
                 message: 'Add source path',
@@ -65,7 +66,7 @@ export const configureSources = async () => {
     } else {
         const fresh = await configStore.read()
         if (fresh.sourcePaths.length === 0) {
-            consola.info(dim('No source paths configured.'))
+            writeString(dim('No source paths configured.'))
             return
         }
         const toRemove = await multiselect<string>({
@@ -78,7 +79,7 @@ export const configureSources = async () => {
                 ...c,
                 sourcePaths: c.sourcePaths.filter((p) => !toRemove.includes(p)),
             }))
-            consola.success(green(`Removed ${toRemove.length} path(s).`))
+            writeString(green(`Removed ${toRemove.length} path(s).`))
         }
     }
 }
@@ -87,13 +88,13 @@ export const changePassword = async () => {
     const { repoPath, savedPassword } = await configStore.read()
 
     if (!repoPath) {
-        consola.error('No backup destination configured. Run `bekk config` first.')
+        writeString(red('No backup destination configured. Run `bekk config` first.'))
         return
     }
 
     const oldPassword = await resolveRepoPassword()
     if (!oldPassword) {
-        consola.error('Could not resolve current repository password.')
+        writeString(red('Could not resolve current repository password.'))
         return
     }
 
@@ -120,10 +121,10 @@ export const changePassword = async () => {
     })
 
     if (wasGenerated) {
-        console.log()
-        console.log(yellow(bold('New auto-generated password:')))
-        console.log('  ' + bold(newPassword))
-        console.log(dim('  Keep this safe — it is required to restore your backups.'))
+        writeString('')
+        writeString(yellow(bold('New auto-generated password:')))
+        writeString('  ' + bold(newPassword))
+        writeString(dim('  Keep this safe — it is required to restore your backups.'))
     }
-    consola.success(green('Password updated.'))
+    writeString(green('Password updated.'))
 }

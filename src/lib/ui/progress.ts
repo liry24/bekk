@@ -1,19 +1,20 @@
 // ─── progress.ts ─── リッチ・プログレスバー（OpenTUI footer）────────────────
 
-import { dim, StyledText, stringToStyledText, TextRenderable, type TextChunk } from '@opentui/core'
+import { FrameBufferRenderable, RGBA } from '@opentui/core'
 
-import { styledSolidBar } from './gradient'
 import { clearFooter, ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
 import { getRandomSpinner } from './spinner'
 import { stripAnsi } from './style'
 
-// Horizontal margin applied identically to all three widget elements (title / bar / details).
-// Change this one constant to re-margin the entire widget.
-//
-//   title:   MARGIN + spinnerFrame + ' ' + title
-//   bar:     MARGIN + bar(barW) + ' ' + pctStr(6) + MARGIN  → barW = termWidth - 2·MARGIN - 7
-//   detail:  MARGIN + dimKey + ' ' + padding + val + MARGIN  → padding fills to right edge
+// Horizontal margin applied identically to all widget elements.
 const MARGIN = 2
+
+// FrameBuffer colour constants (RGBA — reusable, as recommended by the guide).
+const BG = RGBA.fromHex('#000000')
+const TEXT = RGBA.fromHex('#FFFFFF')
+const DIM = RGBA.fromHex('#888888')
+const BAR_FILL = RGBA.fromHex('#00FF00')
+const BAR_EMPTY = RGBA.fromHex('#333333')
 
 export interface RichProgress {
     update(options: { title?: string; bar?: number; details?: string[] }): void
@@ -30,23 +31,13 @@ export const createRichProgress = async (): Promise<RichProgress> => {
     let bar: number | undefined
     let details: string[] = []
 
-    // Footer layout:
-    //   line1  —  spinner + title
-    //   line2  —  empty spacer (between title and bar)
-    //   line3  —  progress bar + percentage
-    //   line4  —  empty spacer + details (leading \n = blank between bar and details;
-    //              height = details.length + 1 when present, 1 when empty)
-    //
-    // Direct TextRenderables on r.root (same pattern as prompts / task-list).
-    const line1 = new TextRenderable(r, { height: 1, content: '' })
-    const line2 = new TextRenderable(r, { height: 1, content: '' })
-    const line3 = new TextRenderable(r, { height: 1, content: '' })
-    const line4 = new TextRenderable(r, { height: 1, content: '' })
+    // Single FrameBufferRenderable covers the entire footer widget.
+    let fb = new FrameBufferRenderable(r, {
+        width: r.width,
+        height: 4,
+    })
 
-    r.root.add(line1)
-    r.root.add(line2)
-    r.root.add(line3)
-    r.root.add(line4)
+    r.root.add(fb)
     ensureHintIsLast(r)
     r.footerHeight = 4 + getExtraFooterHeight()
 
@@ -54,71 +45,76 @@ export const createRichProgress = async (): Promise<RichProgress> => {
         if (finished) return
 
         const frame = spinner.frames[frameIdx % spinner.frames.length]!
-        const termWidth = process.stdout.columns ?? 80
-        const pad = ' '.repeat(MARGIN)
+        const termWidth = r.width
+        const totalHeight = 4 + details.length
 
-        // Line 1: spinner + title (MARGIN left)
-        line1.content = `${pad}${frame} ${title}`
+        // Recreate the framebuffer when dimensions change (details grow/shrink).
+        if (fb.width !== termWidth || fb.height !== totalHeight) {
+            r.root.remove(fb.id)
+            fb.destroyRecursively()
+            fb = new FrameBufferRenderable(r, {
+                width: termWidth,
+                height: totalHeight,
+            })
+            r.root.add(fb)
+            ensureHintIsLast(r)
+        }
 
-        // Line 2: always blank (spacer between title and bar)
+        // Clear background before every draw.
+        fb.frameBuffer.fillRect(0, 0, termWidth, totalHeight, BG)
 
-        // Line 3: solid-color progress bar + right-aligned percentage.
-        //   MARGIN + barW + 1(space) + 6(pct "100.0%") + MARGIN = termWidth
+        // Line 0: spinner + title
+        fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${frame} ${title}`, 0, 0, TEXT, BG)
+
+        // Line 2: solid-colour progress bar + right-aligned percentage.
+        //   MARGIN + barW + 1(space) + 6(pct) + MARGIN = termWidth
         //   → barW = termWidth - 2·MARGIN - 7
         if (bar !== undefined) {
             const pct = Math.min(100, Math.max(0, bar))
             const pctStr = `${pct.toFixed(1)}%`.padStart(6)
             const barW = Math.max(10, termWidth - 2 * MARGIN - 7)
-            const barStyled = styledSolidBar(pct, barW)
-            line3.content = new StyledText([
-                ...stringToStyledText(pad).chunks,
-                ...barStyled.chunks,
-                ...stringToStyledText(` ${pctStr}${pad}`).chunks,
-            ])
-        } else {
-            line3.content = ''
+            const filled = Math.floor(barW * (pct / 100))
+
+            for (let i = 0; i < filled; i++)
+                fb.frameBuffer.setCell(MARGIN + i, 2, '█', BAR_FILL, BG)
+
+            for (let i = filled; i < barW; i++)
+                fb.frameBuffer.setCell(MARGIN + i, 2, '░', BAR_EMPTY, BG)
+
+            fb.frameBuffer.drawText(pctStr, MARGIN + barW + 1, 2, TEXT, BG)
         }
 
-        // Line 4: blank spacer line + one detail entry per line.
-        // Keys are rendered dim via OpenTUI's dim() (returns TextChunk); values are
-        // stripped of caller-supplied ANSI and right-aligned with equal MARGIN on both sides.
-        //   MARGIN + key + 1(space) + innerPadding + val + MARGIN = termWidth
-        //   → innerPadding = termWidth - 2·MARGIN - key.length - 1 - val.length
-        // The leading '\n' creates the blank line between the bar and the detail rows.
-        if (details.length > 0) {
-            const chunks: TextChunk[] = []
-            // Leading empty line — blank gap between bar and details
-            chunks.push(...stringToStyledText('\n').chunks)
-            for (let i = 0; i < details.length; i++) {
-                const detail = details[i]!
-                const suffix = i < details.length - 1 ? '\n' : ''
-                const colonIdx = detail.indexOf(':')
-                if (colonIdx >= 0) {
-                    const key = stripAnsi(detail.slice(0, colonIdx + 1))
-                    const val = stripAnsi(detail.slice(colonIdx + 1).trimStart())
-                    const innerPadding = Math.max(
-                        1,
-                        termWidth - 2 * MARGIN - key.length - 1 - val.length,
-                    )
-                    chunks.push(...stringToStyledText(pad).chunks)
-                    chunks.push(dim(key))
-                    chunks.push(
-                        ...stringToStyledText(' ' + ' '.repeat(innerPadding) + val + pad + suffix)
-                            .chunks,
-                    )
-                } else {
-                    chunks.push(...stringToStyledText(`${pad}${stripAnsi(detail)}${suffix}`).chunks)
-                }
+        // Lines 3+: detail entries.
+        for (let i = 0; i < details.length; i++) {
+            const detail = details[i]!
+            const colonIdx = detail.indexOf(':')
+            if (colonIdx >= 0) {
+                const key = stripAnsi(detail.slice(0, colonIdx + 1))
+                const val = stripAnsi(detail.slice(colonIdx + 1).trimStart())
+                const innerPadding = Math.max(
+                    1,
+                    termWidth - 2 * MARGIN - key.length - 1 - val.length,
+                )
+                fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${key}`, 0, 3 + i, DIM, BG)
+                fb.frameBuffer.drawText(
+                    ' ' + ' '.repeat(innerPadding) + val,
+                    MARGIN + key.length,
+                    3 + i,
+                    TEXT,
+                    BG,
+                )
+            } else {
+                fb.frameBuffer.drawText(
+                    `${' '.repeat(MARGIN)}${stripAnsi(detail)}`,
+                    0,
+                    3 + i,
+                    TEXT,
+                    BG,
+                )
             }
-            line4.height = details.length + 1 // +1 for the leading blank line
-            line4.content = new StyledText(chunks)
-            r.footerHeight = 4 + details.length + getExtraFooterHeight()
-        } else {
-            line4.height = 1
-            line4.content = ''
-            r.footerHeight = 4 + getExtraFooterHeight()
         }
 
+        r.footerHeight = totalHeight + getExtraFooterHeight()
         r.requestRender()
     }
 
@@ -139,12 +135,11 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             refresh()
         },
 
-        finish(opts?: { title?: string }): void {
+        finish(_opts?: { title?: string }): void {
             if (finished) return
             finished = true
             r.removeFrameCallback(frameCallback)
             r.dropLive()
-            if (opts?.title) process.stdout.write(opts.title + '\n')
             clearFooter(r)
         },
     }

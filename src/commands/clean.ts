@@ -1,10 +1,9 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { bold, dim, red, yellow, confirm, createTaskList, drawPanel } from '#lib/ui'
+import { bold, dim, red, yellow, confirm, createTaskList, drawPanel, writeString } from '#lib/ui'
 
 import { app } from '../app'
 
@@ -41,7 +40,7 @@ export const cleanCmd = app
                 instantDelete = confirmed
             }
 
-            console.log(dim('Cleaning repository...'))
+            writeString(dim('Cleaning repository...'))
             const taskList = await createTaskList()
             const pruneTask = taskList.add('Prune orphaned data')
             const checkTask = taskList.add('Check repository')
@@ -122,15 +121,15 @@ export const cleanCmd = app
                         }
                     }
                     if (lines.length > 0) {
-                        process.stdout.write('\n')
-                        drawPanel(lines, {
+                        writeString('')
+                        await drawPanel(lines, {
                             title: flags['dry-run'] ? 'Dry Run Summary' : 'Clean Summary',
                         })
                     }
 
                     if (!flags['dry-run'] && checkData && !checkData.ok) {
-                        process.stdout.write('\n')
-                        consola.warn(
+                        writeString('')
+                        writeString(
                             yellow('Repository check found errors. Review the output above.'),
                         )
                     }
@@ -140,9 +139,8 @@ export const cleanCmd = app
                 taskList.update(checkTask, 'error')
                 taskList.update(repairTask, 'error')
                 taskList.finish()
-                consola.error(
-                    red('Clean failed:'),
-                    err instanceof Error ? err.message : String(err),
+                writeString(
+                    red('Clean failed:') + ' ' + (err instanceof Error ? err.message : String(err)),
                 )
                 return
             }

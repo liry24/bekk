@@ -1,8 +1,7 @@
-import consola from 'consola'
 import { destr } from 'destr'
 
 import { getAvailableProviders } from '#lib/apps'
-import { green, input, multiselect, select } from '#lib/ui'
+import { green, input, multiselect, select, writeString } from '#lib/ui'
 
 import { configStore } from '../../store'
 import { runMenu, type MenuItem } from './menu'
@@ -19,7 +18,7 @@ type AdvancedAction =
 const configureApps = async () => {
     const providers = getAvailableProviders()
     if (providers.length === 0) {
-        consola.info('App list — no package managers available for macOS/Linux yet.')
+        writeString('App list — no package managers available for macOS/Linux yet.')
         return
     }
 
@@ -56,15 +55,13 @@ const configureApps = async () => {
             validate: (v) => (v.trim() ? true : 'Source name is required'),
         })
         const trimmed = custom.trim()
-        if (trimmed && !finalSources.includes(trimmed)) {
-            finalSources.push(trimmed)
-        }
+        if (trimmed && !finalSources.includes(trimmed)) finalSources.push(trimmed)
     }
 
     await configStore.patch({
         providerConfigsJson: JSON.stringify({ winget: { includeSources: finalSources } }),
     })
-    consola.success(green('App backup settings saved.'))
+    writeString(green('App backup settings saved.'))
 }
 
 export const configureAdvanced = async () => {
@@ -135,7 +132,7 @@ export const configureAdvanced = async () => {
                             default: fresh.compression as CompressionValue,
                         })
                         await configStore.patch({ compression: level })
-                        consola.success(green(`Compression set to ${level}.`))
+                        writeString(green(`Compression set to ${level}.`))
                     },
                 },
                 {
@@ -155,7 +152,7 @@ export const configureAdvanced = async () => {
                             },
                         })
                         await configStore.patch({ packSizeMib: Number(raw) })
-                        consola.success(green(`Pack size set to ${raw} MiB.`))
+                        writeString(green(`Pack size set to ${raw} MiB.`))
                     },
                 },
                 {
@@ -175,7 +172,7 @@ export const configureAdvanced = async () => {
                             },
                         })
                         await configStore.patch({ chunkSizeMib: Number(raw) })
-                        consola.success(green(`Chunk size set to ${raw} MiB.`))
+                        writeString(green(`Chunk size set to ${raw} MiB.`))
                     },
                 },
                 {
@@ -193,7 +190,7 @@ export const configureAdvanced = async () => {
                             ],
                         })
                         await configStore.patch({ extraVerify: enabled })
-                        consola.success(green(`Extra verify ${enabled ? 'enabled' : 'disabled'}.`))
+                        writeString(green(`Extra verify ${enabled ? 'enabled' : 'disabled'}.`))
                     },
                 },
                 {
@@ -213,7 +210,7 @@ export const configureAdvanced = async () => {
                             },
                         })
                         await configStore.patch({ snapshotLimit: Number(raw) })
-                        consola.success(green(`Snapshot limit set to ${raw}.`))
+                        writeString(green(`Snapshot limit set to ${raw}.`))
                     },
                 },
                 {

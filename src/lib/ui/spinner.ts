@@ -2,6 +2,8 @@
 
 import cliSpinners, { type Spinner } from 'cli-spinners'
 
+import { green, red } from './style'
+
 export type SpinnerDef = Spinner
 
 const DOTS_SPINNERS: SpinnerDef[] = [
@@ -32,5 +34,5 @@ export const getRandomSpinner = (): SpinnerDef => {
     return cachedSpinner
 }
 
-export const getSuccessIcon = (): string => '\x1b[32m✔\x1b[0m'
-export const getErrorIcon = (): string => '\x1b[31m✖\x1b[0m'
+export const getSuccessIcon = (): string => green('✔')
+export const getErrorIcon = (): string => red('✖')

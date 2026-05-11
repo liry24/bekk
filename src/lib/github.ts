@@ -2,7 +2,7 @@ import { ofetch } from 'ofetch'
 import open from 'open'
 import { renderANSI } from 'uqr'
 
-import { blue, bold, cyan, dim, orderedList } from '#lib/ui'
+import { blue, bold, cyan, dim, orderedList, writeString } from '#lib/ui'
 
 const GITHUB_API = 'https://api.github.com'
 const DEVICE_CODE_URL = 'https://github.com/login/device/code'
@@ -54,12 +54,12 @@ export const runDeviceFlow = async (clientId: string) => {
     if (codeData.error) throw new Error(`${codeData.error}: ${codeData.error_description}`)
 
     const qr = renderANSI(codeData.verification_uri, {})
-    console.log()
-    console.log(qr)
+    writeString('')
+    writeString(qr)
 
     // Step 2: Prompt user
-    console.log()
-    console.log(
+    writeString('')
+    writeString(
         orderedList([
             `Open in your browser: ${cyan(codeData.verification_uri)}`,
             (() => {
@@ -74,7 +74,7 @@ export const runDeviceFlow = async (clientId: string) => {
             })(),
         ]),
     )
-    console.log()
+    writeString('')
 
     await open(codeData.verification_uri).catch(() => {}) // ignore open failures
 

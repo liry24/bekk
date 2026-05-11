@@ -1,5 +1,4 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
@@ -8,7 +7,16 @@ import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
-import { bold, dim, green, red, createRichProgress, createTaskList, drawPanel } from '#lib/ui'
+import {
+    bold,
+    dim,
+    green,
+    red,
+    createRichProgress,
+    createTaskList,
+    drawPanel,
+    writeString,
+} from '#lib/ui'
 import { getSuccessIcon } from '#lib/ui/spinner'
 
 import { app } from '../app'
@@ -129,7 +137,7 @@ export const backupCmd = app
                 })
             } catch (err) {
                 progress.finish({ title: `  ${red('✖')} Backing up...` })
-                consola.error(red('Backup failed:'), fmtErr(err))
+                writeString(red('Backup failed:') + ' ' + fmtErr(err))
                 return
             }
 
@@ -159,7 +167,7 @@ export const backupCmd = app
                     appSummary = formatAppListSummary(result)
                 } catch (err) {
                     taskList.finish()
-                    consola.warn(dim('App list backup failed:') + ' ' + fmtErr(err))
+                    writeString(dim('App list backup failed:') + ' ' + fmtErr(err))
                 }
             }
 
@@ -169,8 +177,8 @@ export const backupCmd = app
                 `${bold('Sources:')}  ${sources.length} path(s)`,
             ]
             if (appSummary) summaryLines.push(`${bold('Apps:')}     ${appSummary}`)
-            process.stdout.write('\n')
-            drawPanel(summaryLines, {
+            writeString('')
+            await drawPanel(summaryLines, {
                 title: flags['dry-run'] ? 'Dry Run Complete' : 'Backup Complete',
             })
         }),

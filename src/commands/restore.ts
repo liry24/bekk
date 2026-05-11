@@ -1,11 +1,10 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
-import { bold, dim, green, red, input, spinner } from '#lib/ui'
+import { bold, dim, green, red, input, spinner, writeString } from '#lib/ui'
 
 import { app } from '../app'
 
@@ -59,19 +58,19 @@ export const restoreCmd = app
                     })
 
                     if (flags['dry-run']) {
-                        consola.success(green('[dry run] Restore simulation complete.'))
+                        writeString(green('[dry run] Restore simulation complete.'))
                     } else {
-                        consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
+                        writeString(green(bold('Restore complete')) + `  → ${dim(target)}`)
                     }
                 })
             } catch (err) {
                 const message = fmtErr(err)
                 if (/No snapshots found/i.test(message)) {
-                    consola.error(red('Restore failed:'), 'No snapshots found in this repository.')
-                    consola.info(dim('Run `bekk backup` first, then retry `bekk restore`.'))
+                    writeString(red('Restore failed:') + ' No snapshots found in this repository.')
+                    writeString(dim('Run `bekk backup` first, then retry `bekk restore`.'))
                     return
                 }
-                consola.error(red('Restore failed: ') + message)
+                writeString(red('Restore failed: ') + message)
                 return
             }
         }),

@@ -1,7 +1,6 @@
 import { appendFile } from 'node:fs/promises'
 
 import { dataDir } from '@crustjs/store'
-import consola from 'consola'
 import { join } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
@@ -9,7 +8,7 @@ import { backupAllApps, formatAppListSummary } from '#lib/apps'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
-import { bold, cyan, dim, green, red, yellow } from '#lib/ui'
+import { bold, cyan, dim, green, red, yellow, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -74,32 +73,32 @@ export const daemonCmd = app
             throw new Error(`Invalid cron expression: ${bold(cfg.cronSchedule)}`)
         }
 
-        console.log()
-        console.log(green('✓ ' + bold('bekk daemon started')))
-        console.log(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
-        console.log(dim('  Next run:  ') + cyan(next.toLocaleString()))
-        console.log(dim('  Log file:  ') + dim(logPath))
-        console.log()
-        console.log(yellow('Press Ctrl+C to stop.'))
-        console.log()
+        writeString('')
+        writeString(green('✓ ' + bold('bekk daemon started')))
+        writeString(dim('  Schedule:  ') + cyan(cfg.cronSchedule))
+        writeString(dim('  Next run:  ') + cyan(next.toLocaleString()))
+        writeString(dim('  Log file:  ') + dim(logPath))
+        writeString('')
+        writeString(yellow('Press Ctrl+C to stop.'))
+        writeString('')
 
         await appendLog(logPath, 'INFO', `Daemon started — schedule: ${cfg.cronSchedule}`)
 
         // Register in-process cron job
         Bun.cron(cfg.cronSchedule, async () => {
             const now = new Date().toISOString()
-            consola.info(`[${now}] Running scheduled backup...`)
+            writeString(`[${now}] Running scheduled backup...`)
             try {
                 await runBackupCycle(logPath)
                 const nextRun = Bun.cron.parse(cfg.cronSchedule)
                 if (nextRun) {
-                    consola.success(
+                    writeString(
                         green('Backup complete.') + dim(`  Next run: ${nextRun.toLocaleString()}`),
                     )
                 }
             } catch (err) {
                 const msg = fmtErr(err)
-                consola.error(red('Backup error: ') + msg)
+                writeString(red('Backup error: ') + msg)
                 await appendLog(logPath, 'ERROR', 'Unhandled error: ' + msg)
             }
         })

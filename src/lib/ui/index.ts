@@ -7,7 +7,7 @@ export { createTaskList, type TaskListInstance, type TaskState } from './task-li
 export { padStart, stripAnsi, wrapLines } from './layout'
 export { getRandomSpinner, getSuccessIcon, getErrorIcon } from './spinner'
 export { bold, dim, italic, green, red, yellow, cyan, blue, table, orderedList } from './style'
-export { getRenderer, clearFooter, destroyRenderer, writeScrollback } from './renderer'
+export { getRenderer, clearFooter, destroyRenderer, writeScrollback, writeString } from './renderer'
 export {
     CancelledError,
     input,

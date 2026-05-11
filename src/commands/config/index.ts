@@ -1,5 +1,4 @@
 import { configDir } from '@crustjs/store'
-import consola from 'consola'
 import { destr } from 'destr'
 import open from 'open'
 
@@ -8,7 +7,7 @@ import { getAvailableProviders } from '#lib/apps'
 import { unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import type { S3Destination } from '#lib/types'
-import { bold, dim, green, CancelledError } from '#lib/ui'
+import { bold, dim, green, red, CancelledError, writeString } from '#lib/ui'
 
 import { app } from '../../app'
 import { configStore } from '../../store'
@@ -26,12 +25,12 @@ const showCmd = app
     .run(async () => {
         const cfg = await configStore.read()
 
-        console.log(bold('Backup destination:'), green(cfg.repoPath || dim('(not set)')))
-        console.log()
+        writeString(bold('Backup destination:') + ' ' + green(cfg.repoPath || dim('(not set)')))
+        writeString('')
 
-        console.log(bold('Sources:'), cfg.sourcePaths.length === 0 ? dim('(not set)') : '')
-        if (cfg.sourcePaths.length !== 0) for (const p of cfg.sourcePaths) console.log('  ' + p)
-        console.log()
+        writeString(bold('Sources:') + ' ' + (cfg.sourcePaths.length === 0 ? dim('(not set)') : ''))
+        if (cfg.sourcePaths.length !== 0) for (const p of cfg.sourcePaths) writeString('  ' + p)
+        writeString('')
 
         const providers = getAvailableProviders()
         if (providers.length > 0) {
@@ -41,36 +40,43 @@ const showCmd = app
                 wingetSources && wingetSources.length > 0
                     ? wingetSources.map((s) => (s === '' ? dim('(blank)') : s)).join(', ')
                     : dim('(none — winget apps will not be backed up)')
-            console.log(bold('App List Backup (winget sources):'), srcLabel)
-        } else {
-            console.log(
-                bold('App List Backup:'),
-                dim('no package managers available for this platform yet'),
+            writeString(bold('App List Backup (winget sources):') + ' ' + srcLabel)
+        } else
+            writeString(
+                bold('App List Backup:') +
+                    ' ' +
+                    dim('no package managers available for this platform yet'),
             )
-        }
-        console.log()
 
-        console.log(bold('Compression:'), cfg.compression === 0 ? 'None' : String(cfg.compression))
-        console.log(bold('Pack size:'), `${cfg.packSizeMib} MiB`)
-        console.log(bold('Chunk size:'), `${cfg.chunkSizeMib} MiB`)
-        console.log(bold('Extra verify:'), cfg.extraVerify ? 'Enabled' : 'Disabled')
-        console.log(bold('Snapshot limit:'), cfg.snapshotLimit)
-        console.log()
+        writeString('')
 
-        console.log(
-            bold('Password:'),
-            cfg.savedPassword ? green('Saved in config file') : dim('OS keychain only'),
+        writeString(
+            bold('Compression:') + ' ' + (cfg.compression === 0 ? 'None' : String(cfg.compression)),
         )
-        console.log()
+        writeString(bold('Pack size:') + ' ' + `${cfg.packSizeMib} MiB`)
+        writeString(bold('Chunk size:') + ' ' + `${cfg.chunkSizeMib} MiB`)
+        writeString(bold('Extra verify:') + ' ' + (cfg.extraVerify ? 'Enabled' : 'Disabled'))
+        writeString(bold('Snapshot limit:') + ' ' + cfg.snapshotLimit)
+        writeString('')
 
-        console.log(bold('GitHub Gist:'), cfg.gistEnabled ? green('Enabled') : dim('Disabled'))
-        console.log(bold('GitHub Gist ID:'), cfg.gistId || dim('(not set)'))
+        writeString(
+            bold('Password:') +
+                ' ' +
+                (cfg.savedPassword ? green('Saved in config file') : dim('OS keychain only')),
+        )
+        writeString('')
+
+        writeString(
+            bold('GitHub Gist:') + ' ' + (cfg.gistEnabled ? green('Enabled') : dim('Disabled')),
+        )
+        writeString(bold('GitHub Gist ID:') + ' ' + (cfg.gistId || dim('(not set)')))
 
         const s3Destinations = destr<S3Destination[]>(cfg.s3DestinationsJson) ?? []
-        console.log(bold('S3 destinations:'), s3Destinations.length === 0 ? dim('(none)') : '')
-        for (const d of s3Destinations) {
-            console.log(`  ${d.name}  ${dim(`${d.bucket} (${d.region})`)}`)
-        }
+        writeString(
+            bold('S3 destinations:') + ' ' + (s3Destinations.length === 0 ? dim('(none)') : ''),
+        )
+        for (const d of s3Destinations)
+            writeString(`  ${d.name}  ${dim(`${d.bucket} (${d.region})`)}`)
     })
 
 // ─── config open ─────────────────────────────────────────────────────────────
@@ -82,10 +88,10 @@ const openCmd = app
     .run(async () => {
         try {
             const dir = configDir('bekk')
-            console.log(green('Opening config directory:'), dim(dir))
+            writeString(green('Opening config directory:') + ' ' + dim(dir))
             await open(dir, { wait: true })
         } catch (err) {
-            consola.error('Failed to open config directory:', fmtErr(err))
+            writeString(red('Failed to open config directory:') + ' ' + fmtErr(err))
         }
     })
 
@@ -159,7 +165,7 @@ export const configCmd = app
                                         await import('../../lib/secrets')
                                     const pw = await resolveRepoPassword()
                                     if (pw) {
-                                        consola.info(dim('Applying config to repository...'))
+                                        writeString(dim('Applying config to repository...'))
                                         unwrapCoreResult(
                                             await bekkCore.applyConfig(after.repoPath, pw, {
                                                 compression: after.compression,
@@ -168,7 +174,7 @@ export const configCmd = app
                                                 chunkSizeMib: after.chunkSizeMib,
                                             }),
                                         )
-                                        consola.success(green('Repository config updated.'))
+                                        writeString(green('Repository config updated.'))
                                     }
                                 }
                             },

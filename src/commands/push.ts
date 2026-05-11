@@ -2,7 +2,6 @@ import { readdir } from 'node:fs/promises'
 
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import { t as styledT, dim as otuiDim } from '@opentui/core'
-import consola from 'consola'
 import { join } from 'pathe'
 import { z } from 'zod'
 
@@ -11,7 +10,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { App, SyncData } from '#lib/types'
-import { dim, confirm, createTaskList, writeScrollback } from '#lib/ui'
+import { dim, confirm, createTaskList, writeScrollback, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -95,9 +94,9 @@ export const pushCmd = app
 
             if (backends.length === 0) {
                 if (flags.backend) {
-                    consola.error(`No backend named "${flags.backend}" is enabled.`)
+                    writeString(`No backend named "${flags.backend}" is enabled.`)
                 } else {
-                    consola.warn(
+                    writeString(
                         'No sync backends are enabled. ' +
                             dim('Run `bekk init` or `bekk gist login` to set one up.'),
                     )

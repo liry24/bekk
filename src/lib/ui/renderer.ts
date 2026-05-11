@@ -3,6 +3,7 @@
 import {
     createCliRenderer,
     TextRenderable,
+    stringToStyledText,
     type CliRenderer,
     type KeyEvent,
     type StyledText,
@@ -61,12 +62,6 @@ export const getRenderer = (): Promise<CliRenderer> => {
         _renderer = r
         r.root.flexDirection = 'column'
 
-        // Global fallback: double-Ctrl+C to exit when no prompt handler consumes it.
-        // First press shows a removable hint line in the footer; second press within
-        // 3 s exits with code 130. The hint disappears when the 3 s window expires.
-        // Uses keyInput.on("keypress") so prompt handlers installed via
-        // prependInputHandler (which consume \x03 before the key parser) still take
-        // priority and this handler only fires when no prompt is active.
         let ctrlCPressedAt: number | null = null
         const CTRL_C_TIMEOUT_MS = 3000
 
@@ -101,15 +96,18 @@ export const getRenderer = (): Promise<CliRenderer> => {
 }
 
 export const clearFooter = (r: CliRenderer): void => {
-    // Cancel pending hint timer to avoid a dangling hideHint call after clear.
     if (_hintTimer !== null) {
         clearTimeout(_hintTimer)
         _hintTimer = null
     }
-    // Null out _hintLine before destroyRecursively so any stale timer callback
-    // that somehow fires will safely short-circuit in hideHint.
     _hintLine = null
     _extraFooterHeight = 0
+
+    // Blur any focused renderable before clearing children so the native
+    // renderer does not leave a dangling cursor or focus state.
+    if (r.currentFocusedRenderable) {
+        r.currentFocusedRenderable.blur()
+    }
 
     const children = [...r.root.getChildren()]
     for (const child of children) {
@@ -120,17 +118,10 @@ export const clearFooter = (r: CliRenderer): void => {
     r.requestRender()
 }
 
-// Write a single styled line to the OpenTUI scrollback via writeToScrollback, bypassing the
-// createStdoutSnapshotCommits path that incorrectly counts ANSI escape bytes as visible columns.
-// Falls back to plain-text stdout when the renderer is unavailable or has left
-// split-footer mode (e.g. after task-list finish() switches to main-screen).
 export const writeScrollback = (content: StyledText): void => {
     if (_renderer && !_renderer.isDestroyed) {
         try {
             _renderer.writeToScrollback((ctx) => {
-                // Compute visible character count so we can allocate enough rows for
-                // wrapping.  Long strings (e.g. gist URLs) would otherwise be silently
-                // clipped when height is fixed at 1.
                 const visibleLen = content.chunks.reduce((s, c) => s + c.text.length, 0)
                 const height = Math.max(1, Math.ceil(visibleLen / ctx.width))
                 const text = new TextRenderable(ctx.renderContext, {
@@ -143,10 +134,28 @@ export const writeScrollback = (content: StyledText): void => {
             })
             return
         } catch {
-            // Renderer may have left split-footer mode; fall through to plain stdout.
+            // Renderer may have left split-footer mode; fall through.
         }
     }
     process.stdout.write(content.chunks.map((c) => c.text).join('') + '\n')
+}
+
+/** Write a plain string (with optional ANSI codes) to scrollback via OpenTUI. */
+export const writeString = (content: string): void => {
+    if (_renderer && !_renderer.isDestroyed) {
+        try {
+            _renderer.writeToScrollback((ctx) => {
+                const text = new TextRenderable(ctx.renderContext, {
+                    content: stringToStyledText(content),
+                })
+                return { root: text, trailingNewline: true }
+            })
+            return
+        } catch {
+            // fall through
+        }
+    }
+    process.stdout.write(content + '\n')
 }
 
 export const destroyRenderer = (): void => {
