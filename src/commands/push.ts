@@ -10,7 +10,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { App, SyncData } from '#lib/types'
-import { bold, dim, green, red, confirm, spinner } from '#lib/ui'
+import { dim, confirm, createTaskList } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -35,6 +35,8 @@ export const pushCmd = app
             const appListsDir = getAppListsDir()
             let syncData: SyncData | null = null
 
+            const taskList = await createTaskList()
+
             const existingFiles = await readdir(appListsDir).catch(() => [] as string[])
             const jsonFiles = existingFiles.filter((f) => f.endsWith('.json'))
 
@@ -51,16 +53,11 @@ export const pushCmd = app
                 }
                 syncData = { config: cfg, appLists }
 
-                await spinner({
-                    message: 'Loading local app lists...',
-                    task: async ({ updateMessage }) => {
-                        const parts: string[] = []
-                        for (const [providerId, apps] of Object.entries(appLists)) {
-                            if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
-                        }
-                        updateMessage('Local app lists loaded: ' + dim(parts.join(', ')))
-                    },
-                })
+                const parts: string[] = []
+                for (const [providerId, apps] of Object.entries(appLists)) {
+                    if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
+                }
+                taskList.add('Load local app lists', parts.join(', '))
             } else {
                 const shouldBackup = await confirm({
                     message: 'No local app lists found. Run backup now?',
@@ -68,20 +65,19 @@ export const pushCmd = app
                 })
 
                 if (shouldBackup) {
-                    await spinner({
-                        message: 'Saving app lists...',
-                        task: async ({ updateMessage }) => {
-                            const result = await backupAllApps(appListsDir)
-                            syncData = { config: cfg, appLists: result }
-                            const parts: string[] = []
-
-                            for (const [providerId, apps] of Object.entries(result)) {
-                                if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
-                            }
-
-                            updateMessage('App lists saved: ' + dim(parts.join(', ')))
-                        },
-                    })
+                    const backupTask = taskList.add('Backup app lists')
+                    try {
+                        const result = await backupAllApps(appListsDir)
+                        syncData = { config: cfg, appLists: result }
+                        const parts: string[] = []
+                        for (const [providerId, apps] of Object.entries(result)) {
+                            if (apps !== null) parts.push(`${providerId}: ${apps.length}`)
+                        }
+                        taskList.update(backupTask, 'success', parts.join(', '))
+                    } catch (err) {
+                        taskList.update(backupTask, 'error', fmtErr(err))
+                        syncData = { config: cfg, appLists: {} }
+                    }
                 } else {
                     syncData = { config: cfg, appLists: {} }
                     console.log(dim('Skipping app list backup. Pushing config only.'))
@@ -102,28 +98,29 @@ export const pushCmd = app
                             dim('Run `bekk init` or `bekk gist login` to set one up.'),
                     )
                 }
+                taskList.finish()
                 process.exitCode = 1
                 return
             }
 
+            const backendTasks: Record<string, string> = {}
+            for (const b of backends) {
+                backendTasks[b.label] = taskList.add(`Push to ${b.label}`)
+            }
+
             let anyFailed = false
-            for (const backend of backends) {
-                let result = ''
+            for (const b of backends) {
+                const taskId = backendTasks[b.label]!
                 try {
-                    await spinner({
-                        message: `Pushing to ${backend.label}...`,
-                        task: async ({ updateMessage }) => {
-                            result = await backend.push(syncData!)
-                            updateMessage(green(bold(`Pushed to ${backend.label}`)))
-                        },
-                    })
-                    console.log(dim(`  ${result}`))
+                    const result = await b.push(syncData!)
+                    taskList.update(taskId, 'success', result)
                 } catch (err) {
-                    consola.error(red(`Push to ${backend.label} failed: `) + fmtErr(err))
+                    taskList.update(taskId, 'error', fmtErr(err))
                     anyFailed = true
                 }
             }
 
+            taskList.finish()
             if (anyFailed) process.exitCode = 1
         }),
     )

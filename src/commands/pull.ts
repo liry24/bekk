@@ -7,7 +7,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
-import { bold, dim, green, red, select, spinner } from '#lib/ui'
+import { dim, select, createTaskList } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -63,44 +63,53 @@ export const pullCmd = app
                 return
             }
 
+            const taskList = await createTaskList()
+            const pullTask = taskList.add(`Pull from ${backend.label}`)
+
             let syncData: SyncData | undefined
 
             try {
-                await spinner({
-                    message: `Pulling from ${backend.label}...`,
-                    task: async ({ updateMessage }) => {
-                        syncData = await backend!.pull(flags.from)
-                        updateMessage(
-                            green(bold(`Config and app lists loaded from ${backend.label}.`)),
-                        )
-                    },
-                })
+                syncData = await backend.pull(flags.from)
+                taskList.update(pullTask, 'success')
+            } catch (err) {
+                taskList.update(pullTask, 'error', fmtErr(err))
+                taskList.finish()
+                process.exitCode = 1
+                return
+            }
 
-                if (!syncData) {
-                    consola.error(`Pull from ${backend.label} failed: no data received`)
-                    process.exitCode = 1
-                    return
-                }
+            if (!syncData) {
+                taskList.update(pullTask, 'error', 'no data received')
+                taskList.finish()
+                process.exitCode = 1
+                return
+            }
 
-                // Write config locally
+            // Write config locally
+            const writeTask = taskList.add('Write local files')
+            try {
                 await configStore.write(syncData.config)
 
-                // Write app lists locally
                 const appListsDir = getAppListsDir()
+                let fileCount = 0
                 for (const [providerId, apps] of Object.entries(syncData.appLists)) {
                     if (apps !== null) {
                         await Bun.write(
                             join(appListsDir, `${providerId}.json`),
                             JSON.stringify(apps, null, 2),
                         )
+                        fileCount++
                     }
                 }
+                taskList.update(writeTask, 'success', `${fileCount} app list(s)`)
             } catch (err) {
-                consola.error(red(`Pull from ${backend.label} failed: `) + fmtErr(err))
+                taskList.update(writeTask, 'error', fmtErr(err))
+                taskList.finish()
                 process.exitCode = 1
                 return
             }
 
+            taskList.finish()
             console.log(dim('  Run `bekk config show` to verify the loaded settings.'))
         }),
     )
