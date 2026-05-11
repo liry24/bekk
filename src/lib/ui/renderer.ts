@@ -120,9 +120,11 @@ export const destroyRenderer = (): void => {
     _hintLine = null
     _extraFooterHeight = 0
 
-    if (_renderer && !_renderer.isDestroyed) {
-        _renderer.destroy()
-    }
+    // Intentionally skip _renderer.destroy() to preserve scrollback content.
+    // OpenTUI's destroy() clears the terminal screen on exit, which erases
+    // all backup results, push/pull logs, and panel summaries that commands
+    // have already written. The OS reverts raw stdin mode automatically
+    // when the process exits.
     _renderer = null
     _initPromise = null
 }
