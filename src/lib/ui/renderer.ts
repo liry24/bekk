@@ -49,6 +49,8 @@ export const getRenderer = (): Promise<CliRenderer> => {
         useKittyKeyboard: null,
         footerHeight: 1,
         consoleMode: 'disabled',
+        clearOnShutdown: false,
+        useMouse: false,
     }).then((r) => {
         _renderer = r
         r.root.flexDirection = 'column'
@@ -120,11 +122,9 @@ export const destroyRenderer = (): void => {
     _hintLine = null
     _extraFooterHeight = 0
 
-    // Intentionally skip _renderer.destroy() to preserve scrollback content.
-    // OpenTUI's destroy() clears the terminal screen on exit, which erases
-    // all backup results, push/pull logs, and panel summaries that commands
-    // have already written. The OS reverts raw stdin mode automatically
-    // when the process exits.
+    if (_renderer && !_renderer.isDestroyed) {
+        _renderer.destroy()
+    }
     _renderer = null
     _initPromise = null
 }
