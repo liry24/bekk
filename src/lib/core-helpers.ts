@@ -1,8 +1,8 @@
-import { red } from '@crustjs/style'
 import consola from 'consola'
 
 import type { CoreResult } from '#bekk-core'
 import { resolveRepoPassword } from '#lib/secrets'
+import { red } from '#lib/ui'
 
 import { configStore } from '../store'
 

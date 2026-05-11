@@ -1,5 +1,3 @@
-import { multiselect } from '@crustjs/prompts'
-import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { destr } from 'destr'
@@ -10,7 +8,17 @@ import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib
 import { analyzeApps, installApps } from '#lib/apps/restore'
 import { getAppListsDir } from '#lib/paths'
 import type { App } from '#lib/types'
-import { createTaskList, drawPanel } from '#lib/ui'
+import {
+    bold,
+    cyan,
+    dim,
+    green,
+    red,
+    yellow,
+    multiselect,
+    createTaskList,
+    drawPanel,
+} from '#lib/ui'
 
 import { app } from '../app'
 
@@ -69,7 +77,7 @@ const appsBackupCmd = app
             return
         }
 
-        const taskList = createTaskList()
+        const taskList = await createTaskList()
         const taskIds: Record<string, string> = {}
         for (const p of providers) taskIds[p.id] = taskList.add(p.name)
 
@@ -199,7 +207,7 @@ const appsRestoreCmd = app
 
             // Execute installations
             console.log()
-            const taskList = createTaskList()
+            const taskList = await createTaskList()
             let totalSucceeded = 0
             let totalFailed = 0
 

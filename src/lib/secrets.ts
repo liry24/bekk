@@ -1,8 +1,7 @@
-import { select } from '@crustjs/prompts'
-import type { password as passwordPrompt } from '@crustjs/prompts'
-
 import { bekkCore } from '#bekk-core'
 import { unwrapCoreResult } from '#lib/core-helpers'
+import { select } from '#lib/ui'
+import type { PasswordOptions } from '#lib/ui'
 
 import { configStore } from '../store'
 
@@ -36,7 +35,7 @@ export const generatePassword = (length = 32) => {
  * Prompt for a backup password. Returns auto-generated password if user leaves it blank.
  */
 export const promptPassword = async (
-    password: typeof passwordPrompt,
+    password: (options: PasswordOptions) => Promise<string>,
 ): Promise<{ password: string; wasGenerated: boolean }> => {
     const entered = await password({
         message: 'Backup password  (press Enter to auto-generate)',

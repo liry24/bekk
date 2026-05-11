@@ -1,12 +1,10 @@
-import { confirm, spinner } from '@crustjs/prompts'
-import { bold, dim, red, yellow } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { createTaskList, drawPanel } from '#lib/ui'
+import { bold, dim, red, yellow, confirm, createTaskList, drawPanel } from '#lib/ui'
 
 import { app } from '../app'
 
@@ -43,104 +41,96 @@ export const cleanCmd = app
                 instantDelete = confirmed
             }
 
-            const taskList = createTaskList()
+            console.log(dim('Cleaning repository...'))
+            const taskList = await createTaskList()
             const pruneTask = taskList.add('Prune orphaned data')
             const checkTask = taskList.add('Check repository')
             const repairTask = taskList.add('Repair index')
 
             try {
                 await withRepoAuth(async (cfg, password) => {
-                    await spinner({
-                        message: 'Cleaning repository...',
-                        task: async () => {
-                            const data = unwrapCoreResult(
-                                await bekkCore.clean(
-                                    cfg.repoPath,
-                                    password,
-                                    flags['dry-run'],
-                                    instantDelete,
-                                ),
+                    const data = unwrapCoreResult(
+                        await bekkCore.clean(
+                            cfg.repoPath,
+                            password,
+                            flags['dry-run'],
+                            instantDelete,
+                        ),
+                    )
+
+                    // Prune result
+                    const pruneData = data.prune
+                    if (pruneData) {
+                        if (pruneData.ok) {
+                            taskList.update(pruneTask, 'success')
+                        } else if (
+                            pruneData.unreferenced_packs !== undefined &&
+                            pruneData.unreferenced_size !== undefined
+                        ) {
+                            taskList.update(
+                                pruneTask,
+                                'success',
+                                `${pruneData.unreferenced_packs} packs, ${pruneData.unreferenced_size} bytes unreferenced`,
                             )
+                        } else {
+                            taskList.update(pruneTask, 'success')
+                        }
+                    } else {
+                        taskList.update(pruneTask, 'error')
+                    }
 
-                            // Prune result
-                            const pruneData = data.prune
-                            if (pruneData) {
-                                if (pruneData.ok) {
-                                    taskList.update(pruneTask, 'success')
-                                } else if (
-                                    pruneData.unreferenced_packs !== undefined &&
-                                    pruneData.unreferenced_size !== undefined
-                                ) {
-                                    taskList.update(
-                                        pruneTask,
-                                        'success',
-                                        `${pruneData.unreferenced_packs} packs, ${pruneData.unreferenced_size} bytes unreferenced`,
-                                    )
-                                } else {
-                                    taskList.update(pruneTask, 'success')
-                                }
-                            } else {
-                                taskList.update(pruneTask, 'error')
-                            }
+                    // Check result
+                    const checkData = data.check
+                    if (checkData === null) {
+                        taskList.update(checkTask, 'success', 'skipped (dry run)')
+                    } else if (checkData?.ok) {
+                        taskList.update(checkTask, 'success', 'no errors')
+                    } else {
+                        const errorCount = checkData?.errors?.length ?? 0
+                        taskList.update(checkTask, 'error', `${errorCount} error(s) found`)
+                    }
 
-                            // Check result
-                            const checkData = data.check
-                            if (checkData === null) {
-                                taskList.update(checkTask, 'success', 'skipped (dry run)')
-                            } else if (checkData?.ok) {
-                                taskList.update(checkTask, 'success', 'no errors')
-                            } else {
-                                const errorCount = checkData?.errors?.length ?? 0
-                                taskList.update(checkTask, 'error', `${errorCount} error(s) found`)
-                            }
+                    // Repair result
+                    const repairData = data.repair_index
+                    if (repairData === null) {
+                        taskList.update(repairTask, 'success', 'skipped (dry run)')
+                    } else if (repairData?.ok) {
+                        taskList.update(repairTask, 'success')
+                    } else {
+                        taskList.update(repairTask, 'error')
+                    }
 
-                            // Repair result
-                            const repairData = data.repair_index
-                            if (repairData === null) {
-                                taskList.update(repairTask, 'success', 'skipped (dry run)')
-                            } else if (repairData?.ok) {
-                                taskList.update(repairTask, 'success')
-                            } else {
-                                taskList.update(repairTask, 'error')
-                            }
+                    taskList.finish()
 
-                            taskList.finish()
+                    // Summary panel
+                    const lines: string[] = []
+                    if (pruneData && !pruneData.ok) {
+                        lines.push(
+                            `${bold('Prune preview:')} ${pruneData.unreferenced_packs ?? 0} unreferenced pack(s), ${pruneData.unreferenced_size ?? 0} byte(s)`,
+                        )
+                    }
+                    if (checkData && checkData.errors && checkData.errors.length > 0) {
+                        lines.push(`${bold('Check errors:')}`)
+                        for (const err of checkData.errors.slice(0, 10)) {
+                            lines.push(`  [${err.level}] ${err.message}`)
+                        }
+                        if (checkData.errors.length > 10) {
+                            lines.push(dim(`  ... and ${checkData.errors.length - 10} more`))
+                        }
+                    }
+                    if (lines.length > 0) {
+                        console.log()
+                        drawPanel(lines, {
+                            title: flags['dry-run'] ? 'Dry Run Summary' : 'Clean Summary',
+                        })
+                    }
 
-                            // Summary panel
-                            const lines: string[] = []
-                            if (pruneData && !pruneData.ok) {
-                                lines.push(
-                                    `${bold('Prune preview:')} ${pruneData.unreferenced_packs ?? 0} unreferenced pack(s), ${pruneData.unreferenced_size ?? 0} byte(s)`,
-                                )
-                            }
-                            if (checkData && checkData.errors && checkData.errors.length > 0) {
-                                lines.push(`${bold('Check errors:')}`)
-                                for (const err of checkData.errors.slice(0, 10)) {
-                                    lines.push(`  [${err.level}] ${err.message}`)
-                                }
-                                if (checkData.errors.length > 10) {
-                                    lines.push(
-                                        dim(`  ... and ${checkData.errors.length - 10} more`),
-                                    )
-                                }
-                            }
-                            if (lines.length > 0) {
-                                console.log()
-                                drawPanel(lines, {
-                                    title: flags['dry-run'] ? 'Dry Run Summary' : 'Clean Summary',
-                                })
-                            }
-
-                            if (!flags['dry-run'] && checkData && !checkData.ok) {
-                                console.log()
-                                consola.warn(
-                                    yellow(
-                                        'Repository check found errors. Review the output above.',
-                                    ),
-                                )
-                            }
-                        },
-                    })
+                    if (!flags['dry-run'] && checkData && !checkData.ok) {
+                        console.log()
+                        consola.warn(
+                            yellow('Repository check found errors. Review the output above.'),
+                        )
+                    }
                 })
             } catch (err) {
                 taskList.update(pruneTask, 'error')

@@ -1,10 +1,10 @@
-import { bold, dim, green, table } from '@crustjs/style'
 import { flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
+import { bold, dim, green, table } from '#lib/ui'
 
 import { app } from '../app'
 

@@ -1,8 +1,8 @@
-import { confirm } from '@crustjs/prompts'
-import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { bold, cyan, dim, green, yellow } from '#lib/ui'
+import { confirm } from '#lib/ui'
 
 import { app } from '../app'
 import { authStore, configStore } from '../store'

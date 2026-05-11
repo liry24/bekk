@@ -1,7 +1,6 @@
 import { appendFile } from 'node:fs/promises'
 
 import { dataDir } from '@crustjs/store'
-import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { join } from 'pathe'
 
@@ -10,6 +9,7 @@ import { backupAllApps, formatAppListSummary } from '#lib/apps'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
+import { bold, cyan, dim, green, red, yellow } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'

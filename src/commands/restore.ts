@@ -1,6 +1,3 @@
-import { spinner } from '@crustjs/progress'
-import { input } from '@crustjs/prompts'
-import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { z } from 'zod'
@@ -8,6 +5,7 @@ import { z } from 'zod'
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
+import { bold, dim, green, red, input, spinner } from '#lib/ui'
 
 import { app } from '../app'
 

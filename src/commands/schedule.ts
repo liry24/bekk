@@ -1,7 +1,5 @@
 import { homedir } from 'node:os'
 
-import { confirm, input } from '@crustjs/prompts'
-import { bold, cyan, dim, green, red, yellow } from '@crustjs/style'
 import { promptValidator } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { join } from 'pathe'
@@ -9,6 +7,7 @@ import { z } from 'zod'
 
 import { fmtErr } from '#lib/error'
 import { isAdmin } from '#lib/platform'
+import { confirm, input, bold, cyan, dim, green, red, yellow } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'

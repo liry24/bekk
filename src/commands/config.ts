@@ -1,14 +1,4 @@
-import {
-    CancelledError,
-    confirm,
-    input,
-    multiselect,
-    password,
-    select,
-    spinner,
-} from '@crustjs/prompts'
 import { configDir } from '@crustjs/store'
-import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { destr } from 'destr'
 import open from 'open'
@@ -27,6 +17,20 @@ import {
     setS3SecretAccessKey,
 } from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
+import {
+    bold,
+    cyan,
+    dim,
+    green,
+    yellow,
+    CancelledError,
+    confirm,
+    input,
+    multiselect,
+    password,
+    select,
+    spinner,
+} from '#lib/ui'
 
 import { app } from '../app'
 import { authStore, configStore } from '../store'

@@ -1,12 +1,22 @@
-import { spinner } from '@crustjs/progress'
-import { confirm, input, multiselect, password, select } from '@crustjs/prompts'
-import { bold, cyan, dim, green, yellow } from '@crustjs/style'
 import consola from 'consola'
 import { normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
 import { promptPassword, setRepoPassword, setS3SecretAccessKey } from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
+import {
+    bold,
+    cyan,
+    dim,
+    green,
+    yellow,
+    confirm,
+    input,
+    multiselect,
+    password,
+    select,
+    spinner,
+} from '#lib/ui'
 
 import { app } from '../app'
 import { authStore, configStore } from '../store'

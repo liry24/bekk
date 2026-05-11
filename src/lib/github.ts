@@ -1,7 +1,8 @@
-import { blue, bold, cyan, dim, orderedList } from '@crustjs/style'
 import { ofetch } from 'ofetch'
 import open from 'open'
 import { renderANSI } from 'uqr'
+
+import { blue, bold, cyan, dim, orderedList } from '#lib/ui'
 
 const GITHUB_API = 'https://api.github.com'
 const DEVICE_CODE_URL = 'https://github.com/login/device/code'

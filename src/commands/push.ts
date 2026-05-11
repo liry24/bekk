@@ -1,8 +1,5 @@
 import { readdir } from 'node:fs/promises'
 
-import { spinner } from '@crustjs/progress'
-import { confirm } from '@crustjs/prompts'
-import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
 import consola from 'consola'
 import { join } from 'pathe'
@@ -13,6 +10,7 @@ import { fmtErr } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { App, SyncData } from '#lib/types'
+import { bold, dim, green, red, confirm, spinner } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
