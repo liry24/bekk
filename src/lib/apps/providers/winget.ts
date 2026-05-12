@@ -23,55 +23,58 @@ interface WingetExportJson {
 
 const listWinget = async (includeSources: string[]) => {
     const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${randomUUID()}.json`
-    const exportResult = Bun.spawnSync(
-        [
-            'winget',
-            'export',
-            '-o',
-            tmpFile,
-            '--include-versions',
-            '--accept-source-agreements',
-            '--disable-interactivity',
-        ],
-        { stderr: 'ignore' },
-    )
 
-    if (exportResult.exitCode !== 0) return []
-
-    const file = Bun.file(tmpFile)
-    if (!(await file.exists())) return []
-
-    const text = await file.text()
     try {
-        await file.delete()
-    } catch {
-        // ignore cleanup errors
-    }
+        const exportResult = Bun.spawnSync(
+            [
+                'winget',
+                'export',
+                '-o',
+                tmpFile,
+                '--include-versions',
+                '--accept-source-agreements',
+                '--disable-interactivity',
+            ],
+            { stderr: 'ignore' },
+        )
 
-    const data = destr<WingetExportJson>(text)
-    if (!data?.Sources) return []
+        if (exportResult.exitCode !== 0) return []
 
-    const apps: {
-        name: string
-        id: string
-        version: string
-        source: string
-    }[] = []
+        const file = Bun.file(tmpFile)
+        if (!(await file.exists())) return []
 
-    for (const source of data.Sources) {
-        const sourceName = source.SourceDetails?.Name ?? ''
-        if (!includeSources.includes(sourceName)) continue
-        for (const pkg of source.Packages) {
-            apps.push({
-                name: pkg.PackageIdentifier,
-                id: pkg.PackageIdentifier,
-                version: pkg.Version,
-                source: sourceName,
-            })
+        const text = await file.text()
+        const data = destr<WingetExportJson>(text)
+        if (!data?.Sources) return []
+
+        const apps: {
+            name: string
+            id: string
+            version: string
+            source: string
+        }[] = []
+
+        for (const source of data.Sources) {
+            const sourceName = source.SourceDetails?.Name ?? ''
+            if (!includeSources.includes(sourceName)) continue
+            for (const pkg of source.Packages) {
+                apps.push({
+                    name: pkg.PackageIdentifier,
+                    id: pkg.PackageIdentifier,
+                    version: pkg.Version,
+                    source: sourceName,
+                })
+            }
+        }
+
+        return apps
+    } finally {
+        try {
+            await Bun.file(tmpFile).delete()
+        } catch {
+            // ignore cleanup errors
         }
     }
-
-    return apps
 }
 
 const defaultSources = ['winget', 'msstore']
