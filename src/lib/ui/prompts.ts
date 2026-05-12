@@ -188,6 +188,7 @@ export const confirm = async (options: ConfirmOptions) =>
             { label: options.inactive ?? 'No', value: false },
         ],
         default: options.default ?? true,
+        showDescription: false,
     })
 
 // ─── select ──────────────────────────────────────────────────────────────────
