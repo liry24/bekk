@@ -18,17 +18,12 @@ const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 
 export const generatePassword = (length = 32) => {
     const charsLength = PASSWORD_CHARS.length
-    const maxValid = 256 - (256 % charsLength)
-    const result: string[] = []
-    while (result.length < length) {
-        const byte = new Uint8Array(1)
-        crypto.getRandomValues(byte)
-        const b = byte[0]!
-        if (b < maxValid) {
-            result.push(PASSWORD_CHARS.charAt(b % charsLength))
-        }
+    const bytes = crypto.getRandomValues(new Uint8Array(length))
+    let result = ''
+    for (let i = 0; i < length; i++) {
+        result += PASSWORD_CHARS.charAt(bytes[i]! % charsLength)
     }
-    return result.join('')
+    return result
 }
 
 /**
