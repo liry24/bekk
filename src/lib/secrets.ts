@@ -14,7 +14,7 @@ import { configStore } from '../store'
 const SERVICE = 'bekk'
 const REPO_PASSWORD_KEY = 'repo-password'
 
-const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
+const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=+'
 
 export const generatePassword = (length = 32) => {
     const charsLength = PASSWORD_CHARS.length
