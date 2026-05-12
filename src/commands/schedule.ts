@@ -1,6 +1,6 @@
 import { bekkCore } from '#bekk-core'
 import { unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getScheduler } from '#lib/scheduler'
 import type { ScheduleConfig } from '#lib/scheduler'
 import { bold, cyan, dim, green, red, writeString } from '#lib/ui'
@@ -127,7 +127,7 @@ const addCmd = app
         try {
             config = parseScheduleConfig(flags as never)
         } catch (err) {
-            writeString(red('Error: ') + fmtErr(err))
+            writeString(red('Error: ') + formatError(err))
             process.exit(1)
         }
 
@@ -139,7 +139,7 @@ const addCmd = app
         try {
             unwrapCoreResult(await bekkCore.scheduleInfo(buildScheduleInfoOpts(config)))
         } catch (err) {
-            writeString(red('Invalid schedule: ') + fmtErr(err))
+            writeString(red('Invalid schedule: ') + formatError(err))
             process.exit(1)
         }
 
@@ -149,7 +149,7 @@ const addCmd = app
         try {
             await scheduler.install(TASK_LABEL, program, args, config)
         } catch (err) {
-            writeString(red('Failed to install schedule: ') + fmtErr(err))
+            writeString(red('Failed to install schedule: ') + formatError(err))
             process.exit(1)
         }
 
@@ -170,7 +170,7 @@ const rmCmd = app
         try {
             await scheduler.uninstall(TASK_LABEL)
         } catch (err) {
-            writeString(red('Failed to remove schedule: ') + fmtErr(err))
+            writeString(red('Failed to remove schedule: ') + formatError(err))
             process.exit(1)
         }
 

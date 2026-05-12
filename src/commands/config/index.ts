@@ -5,7 +5,7 @@ import open from 'open'
 import { bekkCore } from '#bekk-core'
 import { getAvailableProviders } from '#lib/apps'
 import { unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import type { S3Destination } from '#lib/types'
 import { bold, dim, green, red, CancelledError, writeString } from '#lib/ui'
 
@@ -91,7 +91,7 @@ const openCmd = app
             writeString(green('Opening config directory:') + ' ' + dim(dir))
             await open(dir, { wait: true })
         } catch (err) {
-            writeString(red('Failed to open config directory:') + ' ' + fmtErr(err))
+            writeString(red('Failed to open config directory:') + ' ' + formatError(err))
         }
     })
 

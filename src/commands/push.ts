@@ -6,7 +6,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { backupAllApps } from '#lib/apps'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { App, SyncData } from '#lib/types'
@@ -76,7 +76,7 @@ export const pushCmd = app
                         }
                         taskList.update(backupTask, 'success', parts.join(', '))
                     } catch (err) {
-                        taskList.update(backupTask, 'error', fmtErr(err))
+                        taskList.update(backupTask, 'error', formatError(err))
                         syncData = { config: cfg, appLists: {} }
                     }
                 } else {
@@ -121,7 +121,7 @@ export const pushCmd = app
                     results[b.label] = result
                     taskList.update(taskId, 'success')
                 } catch (err) {
-                    taskList.update(taskId, 'error', fmtErr(err))
+                    taskList.update(taskId, 'error', formatError(err))
                     anyFailed = true
                 }
             }

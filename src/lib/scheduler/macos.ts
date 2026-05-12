@@ -6,6 +6,7 @@ import type { ScheduleConfig, Scheduler } from './types'
 
 const LABEL = 'com.bekk.backup'
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
+const FALLBACK_MACOS_UID = 501
 
 /**
  * Escape text for XML plist <string> elements.
@@ -72,12 +73,12 @@ const exec = (args: string[]) => {
 export const macosScheduler: Scheduler = {
     async install(_label, program, args, config) {
         await Bun.write(PLIST_PATH, buildPlist(program, args, config))
-        const uid = String(process.getuid?.() ?? 501)
+        const uid = String(process.getuid?.() ?? FALLBACK_MACOS_UID)
         exec(['launchctl', 'bootstrap', `gui/${uid}`, PLIST_PATH])
     },
     async uninstall(_label) {
         if (!(await Bun.file(PLIST_PATH).exists())) return
-        const uid = String(process.getuid?.() ?? 501)
+        const uid = String(process.getuid?.() ?? FALLBACK_MACOS_UID)
         try {
             exec(['launchctl', 'bootout', `gui/${uid}`, PLIST_PATH])
         } catch {

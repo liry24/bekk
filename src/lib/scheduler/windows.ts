@@ -1,4 +1,4 @@
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 
 import type { ScheduleConfig, Scheduler } from './types'
 
@@ -72,7 +72,7 @@ export const windowsScheduler: Scheduler = {
         try {
             exec(['schtasks', '/delete', '/tn', label, '/f'])
         } catch (err) {
-            const msg = fmtErr(err)
+            const msg = formatError(err)
             if (msg.includes('not found') || msg.includes('ERROR: The system cannot find')) return
             throw err
         }

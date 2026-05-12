@@ -1,3 +1,4 @@
+import { DEFAULT_S3_REGION } from '#lib/defaults'
 import { setS3SecretAccessKey } from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
 import { cyan, dim, green, bold, input, password, writeString } from '#lib/ui'
@@ -61,7 +62,7 @@ export const promptS3Destination = async (
     const destination: S3Destination = {
         name: name.trim(),
         bucket: bucket.trim(),
-        region: region.trim() || 'us-east-1',
+        region: region.trim() || DEFAULT_S3_REGION,
         endpoint: endpoint.trim(),
         accessKeyId: accessKeyId.trim(),
     }

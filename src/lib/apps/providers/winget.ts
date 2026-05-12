@@ -22,7 +22,7 @@ interface WingetExportJson {
 }
 
 const listWinget = async (includeSources: string[]) => {
-    const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${randomUUID()}.json`
+    const tmpFile = `${process.env.TEMP ?? 'C:\\\\Windows\\\\Temp'}\\bekk-winget-export-${randomUUID()}.json`
 
     try {
         const exportResult = Bun.spawnSync(

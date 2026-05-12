@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { bold, dim, green, red, input, spinner, writeString } from '#lib/ui'
 
 import { app } from '../app'
@@ -77,7 +77,7 @@ export const restoreCmd = app
                     }
                 })
             } catch (err) {
-                const message = fmtErr(err)
+                const message = formatError(err)
                 if (/No snapshots found/i.test(message)) {
                     writeString(red('Restore failed:') + ' No snapshots found in this repository.')
                     writeString(dim('Run `bekk backup` first, then retry `bekk restore`.'))

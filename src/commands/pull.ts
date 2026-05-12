@@ -3,7 +3,7 @@ import { t as styledT, dim as otuiDim } from '@opentui/core'
 import { join } from 'pathe'
 import { z } from 'zod'
 
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
@@ -73,7 +73,7 @@ export const pullCmd = app
                 syncData = await backend.pull(flags.from)
                 taskList.update(pullTask, 'success')
             } catch (err) {
-                taskList.update(pullTask, 'error', fmtErr(err))
+                taskList.update(pullTask, 'error', formatError(err))
                 taskList.finish()
                 process.exitCode = 1
                 return
@@ -105,7 +105,7 @@ export const pullCmd = app
                 }
                 taskList.update(writeTask, 'success', `${fileCount} app list(s)`)
             } catch (err) {
-                taskList.update(writeTask, 'error', fmtErr(err))
+                taskList.update(writeTask, 'error', formatError(err))
                 taskList.finish()
                 process.exitCode = 1
                 return

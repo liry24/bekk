@@ -3,6 +3,8 @@ use std::{sync::Mutex, time::{Duration, Instant}};
 use rustic_core::{Progress, ProgressBars, ProgressType, RusticProgress};
 use serde_json::{Value, json};
 
+const PROGRESS_THROTTLE_MS: u64 = 50;
+
 #[derive(Debug)]
 pub struct JsonProgress {
     pub prefix: String,
@@ -13,7 +15,7 @@ pub struct JsonProgress {
 impl JsonProgress {
     pub fn emit(&self, event: Value) {
         let mut last = self.last_emit.lock().unwrap();
-        if last.elapsed() >= Duration::from_millis(50) {
+        if last.elapsed() >= Duration::from_millis(PROGRESS_THROTTLE_MS) {
             println!("{}", event);
             *last = Instant::now();
         }

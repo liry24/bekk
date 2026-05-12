@@ -5,7 +5,7 @@ import { bekkCore } from '#bekk-core'
 import type { ProgressEvent } from '#bekk-core'
 import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib/apps'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import {
     bold,
@@ -21,11 +21,13 @@ import { getSuccessIcon } from '#lib/ui/spinner'
 
 import { app } from '../app'
 
+const BYTES_PER_UNIT_STEP = 10
+
 const formatBytes = (n: number): string => {
     if (n === 0) return '0 B'
     const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-    const i = Math.min(units.length - 1, Math.floor(Math.log2(n) / 10))
-    const v = n / Math.pow(2, i * 10)
+    const i = Math.min(units.length - 1, Math.floor(Math.log2(n) / BYTES_PER_UNIT_STEP))
+    const v = n / Math.pow(2, i * BYTES_PER_UNIT_STEP)
     return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
@@ -137,7 +139,7 @@ export const backupCmd = app
                 })
             } catch (err) {
                 progress.finish({ title: `  ${red('✖')} Backing up...` })
-                writeString(red('Backup failed:') + ' ' + fmtErr(err))
+                writeString(red('Backup failed:') + ' ' + formatError(err))
                 return
             }
 
@@ -167,13 +169,16 @@ export const backupCmd = app
                     appSummary = formatAppListSummary(result)
                 } catch (err) {
                     taskList.finish()
-                    writeString(dim('App list backup failed:') + ' ' + fmtErr(err))
+                    writeString(dim('App list backup failed:') + ' ' + formatError(err))
                 }
             }
 
             // ── Summary panel ──────────────────────────────────────────────────
+            const snapshotLabel = flags['dry-run']
+                ? dim('(not created)')
+                : green(snapshotId ? snapshotId.slice(0, 8) : dim('—'))
             const summaryLines = [
-                `${bold('Snapshot:')} ${flags['dry-run'] ? dim('(not created)') : green(snapshotId ? snapshotId.slice(0, 8) : dim('—'))}`,
+                `${bold('Snapshot:')} ${snapshotLabel}`,
                 `${bold('Sources:')}  ${sources.length} path(s)`,
             ]
             if (appSummary) summaryLines.push(`${bold('Apps:')}     ${appSummary}`)
