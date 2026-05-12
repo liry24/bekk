@@ -7,6 +7,12 @@ import type { ScheduleConfig, Scheduler } from './types'
 const LABEL = 'com.bekk.backup'
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
 
+/**
+ * Escape text for XML plist <string> elements.
+ */
+const escapeXml = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
 const buildPlist = (program: string, args: string[], config: ScheduleConfig): string => {
     let intervalXml = ''
     if (config.type === 'interval') {
@@ -41,17 +47,17 @@ const buildPlist = (program: string, args: string[], config: ScheduleConfig): st
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${LABEL}</string>
+    <string>${escapeXml(LABEL)}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${program}</string>
-${args.map((a) => `        <string>${a}</string>`).join('\n')}
+        <string>${escapeXml(program)}</string>
+${args.map((a) => `        <string>${escapeXml(a)}</string>`).join('\n')}
     </array>
 ${intervalXml}
     <key>StandardOutPath</key>
-    <string>${join(logDir, 'bekk-backup.log')}</string>
+    <string>${escapeXml(join(logDir, 'bekk-backup.log'))}</string>
     <key>StandardErrorPath</key>
-    <string>${join(logDir, 'bekk-backup-error.log')}</string>
+    <string>${escapeXml(join(logDir, 'bekk-backup-error.log'))}</string>
 </dict>
 </plist>`
 }

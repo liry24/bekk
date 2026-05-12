@@ -9,13 +9,21 @@ const SERVICE_DIR = join(homedir(), '.config', 'systemd', 'user')
 const SERVICE_PATH = join(SERVICE_DIR, `${LABEL}.service`)
 const TIMER_PATH = join(SERVICE_DIR, `${LABEL}.timer`)
 
+/**
+ * Escape an argument for systemd ExecStart= lines.
+ */
+const escapeSystemdArg = (arg: string): string => {
+    if (!/[ \t\n\r"\\$`]/.test(arg)) return arg
+    return '"' + arg.replace(/(["\\$`])/g, '\\$1') + '"'
+}
+
 const buildService = (program: string, args: string[]) =>
     `[Unit]
 Description=bekk scheduled backup
 
 [Service]
 Type=oneshot
-ExecStart=${program} ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}
+ExecStart=${escapeSystemdArg(program)} ${args.map(escapeSystemdArg).join(' ')}
 
 [Install]
 WantedBy=default.target

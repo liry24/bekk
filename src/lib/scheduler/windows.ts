@@ -10,6 +10,32 @@ const exec = (args: string[]) => {
     return new TextDecoder().decode(result.stdout).trim()
 }
 
+/**
+ * Escape an argument for Windows command-line parsing (CommandLineToArgvW rules).
+ */
+const escapeWindowsArg = (arg: string): string => {
+    if (!/[ \t\n\r"\\]/.test(arg)) return arg
+    let escaped = '"'
+    for (let i = 0; i < arg.length; i++) {
+        let backslashCount = 0
+        while (i < arg.length && arg[i] === '\\') {
+            backslashCount++
+            i++
+        }
+        if (i === arg.length) {
+            escaped += '\\'.repeat(backslashCount * 2)
+            break
+        }
+        if (arg[i] === '"') {
+            escaped += '\\'.repeat(backslashCount * 2 + 1) + '"'
+        } else {
+            escaped += '\\'.repeat(backslashCount) + arg[i]
+        }
+    }
+    escaped += '"'
+    return escaped
+}
+
 const buildTriggerArgs = (config: ScheduleConfig): string[] => {
     switch (config.type) {
         case 'daily':
@@ -38,7 +64,7 @@ const buildTriggerArgs = (config: ScheduleConfig): string[] => {
 export const windowsScheduler: Scheduler = {
     async install(label, program, args, config) {
         const triggerArgs = buildTriggerArgs(config)
-        const command = `"${program}" ${args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`
+        const command = [program, ...args].map(escapeWindowsArg).join(' ')
         const taskArgs = ['schtasks', '/create', '/tn', label, '/tr', command, ...triggerArgs, '/f']
         exec(taskArgs)
     },
