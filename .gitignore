@@ -36,3 +36,5 @@ report.*.*.*.*.json
 bekk-core/target
 
 .opencode
+.agents
+skills-lock.json
