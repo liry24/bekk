@@ -1,4 +1,4 @@
-// ─── gradient.ts ─── ANSI 256色グラデーション ──────────────────────────────
+// ─── gradient.ts ─── ANSI 256-colour gradient utilities ──────────────────────
 
 import { RGBA, StyledText, fg } from '@opentui/core'
 
@@ -7,17 +7,17 @@ import { stripAnsi } from './layout'
 const color256 = (fg: number) => `\x1b[38;5;${fg}m`
 const colorReset = '\x1b[0m'
 
-/** 線形補間 */
+/** Linear interpolation */
 const lerp = (a: number, b: number, t: number): number => Math.round(a + (b - a) * t)
 
-/** テキスト全体を start→end の色でグラデーション */
+/** Apply a start→end colour gradient across the entire text */
 export const gradientText = (text: string, startColor: number, endColor: number): string => {
     const chars = stripAnsi(text).split('')
     let result = ''
     let rawIndex = 0
     for (let i = 0; i < text.length; i++) {
         if (text.charCodeAt(i) === 0x1b) {
-            // ANSI シーケンスはそのまま通す
+            // Pass ANSI sequences through unchanged
             while (i < text.length && text[i] !== 'm') {
                 result += text[i]
                 i++
@@ -50,7 +50,7 @@ export const gradientBar = (
     return bar
 }
 
-/** デフォルトのバックアップ進捗グラデーション: シアン→グリーン */
+/** Default backup-progress gradient: cyan→green */
 export const defaultGradient = (percent: number, width: number): string =>
     gradientBar(percent, width, 51, 82)
 
@@ -74,12 +74,12 @@ export const styledGradientBar = (
     return new StyledText(chunks)
 }
 
-/** デフォルトのバックアップ進捗グラデーション (StyledText版): シアン→グリーン */
+/** Default backup-progress gradient (StyledText variant): cyan→green */
 export const defaultStyledGradient = (percent: number, width: number): StyledText =>
     styledGradientBar(percent, width, 51, 82)
 
 /**
- * グラデーションなしのソリッドカラーバー。
+ * Solid colour bar without a gradient.
  * fillColorIndex: filled chars color (default 255 = bright white)
  * emptyColorIndex: empty chars color (default 238 = dark gray)
  */

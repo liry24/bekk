@@ -1,4 +1,4 @@
-// ─── index.ts ─── UI コンポーネント層のエクスポート ────────────────────────
+// ─── index.ts ─── UI component layer exports ─────────────────────────────────
 
 export { drawPanel, type PanelOptions } from './panel'
 export { gradientText, gradientBar, defaultGradient } from './gradient'

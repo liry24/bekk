@@ -1,4 +1,4 @@
-// ─── progress.ts ─── リッチ・プログレスバー（OpenTUI footer）────────────────
+// ─── progress.ts ─── Rich progress bar (OpenTUI footer) ──────────────────────
 
 import { FrameBufferRenderable, RGBA } from '@opentui/core'
 

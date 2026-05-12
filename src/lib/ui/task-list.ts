@@ -1,4 +1,4 @@
-// ─── task-list.ts ─── タスクリスト（リアルタイム更新、OpenTUI footer） ──────
+// ─── task-list.ts ─── Live-updating task list (OpenTUI footer) ───────────────
 
 import {
     StyledText,

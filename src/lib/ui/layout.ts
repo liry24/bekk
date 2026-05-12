@@ -1,4 +1,4 @@
-// ─── layout.ts ─── ターミナル幅と文字列整形ユーティリティ ───────────────────
+// ─── layout.ts ─── Terminal width and string formatting utilities ────────────
 
 export const padStart = (s: string, len: number): string => {
     const visibleLen = stripAnsi(s).length
