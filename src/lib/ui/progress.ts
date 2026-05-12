@@ -4,7 +4,7 @@ import { FrameBufferRenderable, RGBA } from '@opentui/core'
 
 import { clearFooter, ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
 import { getRandomSpinner } from './spinner'
-import { stripAnsi } from './style'
+import { stripAnsi } from './layout'
 
 // Horizontal margin applied identically to all widget elements.
 const MARGIN = 2
