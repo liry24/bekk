@@ -27,6 +27,8 @@ const loginCmd = app
         writeString('Starting GitHub Device Flow authentication...')
 
         const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
+        // Clear device flow output (QR code, instructions)
+        writeString('\x1b[2J\x1b[H')
         await setGitHubToken(newToken)
         await configStore.patch({ gistEnabled: true })
 

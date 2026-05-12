@@ -123,6 +123,8 @@ export const configureSyncBackends = async () => {
                                         'Authentication required. Starting GitHub Device Flow...',
                                     )
                                     const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
+                                    // Clear device flow output (QR code, instructions)
+                                    writeString('\x1b[2J\x1b[H')
                                     await setGitHubToken(newToken)
                                 }
                                 await configStore.patch({ gistEnabled: true })
