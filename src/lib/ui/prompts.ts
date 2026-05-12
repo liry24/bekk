@@ -8,7 +8,7 @@ import {
     TextRenderable,
 } from '@opentui/core'
 
-import { getRenderer, clearFooter, writeString } from './renderer'
+import { getRenderer, clearFooter, setFooterHeight, writeString } from './renderer'
 import { getRandomSpinner } from './spinner'
 
 // ─── CancelledError ──────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ export const input = async (options: InputOptions): Promise<string> => {
         r.root.add(label)
         r.root.add(field)
         r.root.add(hint)
-        r.footerHeight = 3
+        setFooterHeight(r, 3)
         field.focus()
         r.requestRender()
 
@@ -134,7 +134,7 @@ export const password = async (options: PasswordOptions): Promise<string> => {
         r.root.add(label)
         r.root.add(display)
         r.root.add(hint)
-        r.footerHeight = 3
+        setFooterHeight(r, 3)
         r.requestRender()
 
         const refresh = () => {
@@ -266,7 +266,7 @@ export const select = async <T = string>(options: SelectOptions<T>): Promise<T> 
 
         r.root.add(label)
         r.root.add(sel)
-        r.footerHeight = 1 + selectHeight
+        setFooterHeight(r, 1 + selectHeight)
         sel.focus()
         r.requestRender()
 
@@ -329,7 +329,7 @@ export const multiselect = async <T = string>(options: MultiselectOptions<T>): P
         r.root.add(label)
         r.root.add(body)
         r.root.add(footer)
-        r.footerHeight = 1 + visibleLines + 1
+        setFooterHeight(r, 1 + visibleLines + 1)
         r.requestRender()
 
         const refresh = () => {
@@ -398,7 +398,7 @@ export const spinner = async (options: SpinnerOptions): Promise<void> => {
 
     const text = new TextRenderable(r, { height: 1, content: '' })
     r.root.add(text)
-    r.footerHeight = 1
+    setFooterHeight(r, 1)
 
     let frameIdx = 0
     let currentMessage = message

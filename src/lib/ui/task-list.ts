@@ -16,6 +16,7 @@ import {
     ensureHintIsLast,
     getExtraFooterHeight,
     getRenderer,
+    setFooterHeight,
     writeScrollback,
 } from './renderer'
 import { getRandomSpinner } from './spinner'
@@ -46,6 +47,9 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
     let finished = false
     // Lazily created on first add() to avoid a blank footer line before any tasks exist.
     let text: TextRenderable | null = null
+    // Track the maximum number of tasks ever added so the footer never
+    // shrinks during live updates (which would leave ghost text on screen).
+    let maxTasks = 0
 
     // ─── Icon / row builders ─────────────────────────────────────────────────
     // These live inside the closure so formatIconChunk can read the current frameIdx.
@@ -77,13 +81,28 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
 
     const redraw = () => {
         if (!text || tasksOrder.length === 0) return
-        text.height = tasksOrder.length
-        r.footerHeight = tasksOrder.length + getExtraFooterHeight()
+        if (tasksOrder.length > maxTasks) maxTasks = tasksOrder.length
+        text.height = maxTasks
+        setFooterHeight(r, maxTasks + getExtraFooterHeight())
+        const termWidth = r.width
         const allChunks: TextChunk[] = []
         for (let i = 0; i < tasksOrder.length; i++) {
             if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
             const task = taskMap.get(tasksOrder[i]!)!
-            allChunks.push(...formatTaskStyled(task).chunks)
+            const taskStyled = formatTaskStyled(task)
+            allChunks.push(...taskStyled.chunks)
+            // Pad the line with spaces to the terminal width so that
+            // previously drawn characters on this row are overwritten.
+            const visibleLen = taskStyled.chunks.reduce((s, c) => s + c.text.length, 0)
+            if (visibleLen < termWidth) {
+                allChunks.push(styledT`${' '.repeat(termWidth - visibleLen)}`.chunks[0]!)
+            }
+        }
+        // Fill remaining rows (if maxTasks > current tasks) with blank
+        // lines padded to terminal width to clear any ghost text.
+        for (let i = tasksOrder.length; i < maxTasks; i++) {
+            if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
+            allChunks.push(styledT`${' '.repeat(termWidth)}`.chunks[0]!)
         }
         text.content = new StyledText(allChunks)
         r.requestRender()

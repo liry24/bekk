@@ -3,7 +3,14 @@
 import { FrameBufferRenderable, RGBA } from '@opentui/core'
 
 import { stripAnsi } from './layout'
-import { clearFooter, ensureHintIsLast, getExtraFooterHeight, getRenderer } from './renderer'
+import {
+    clearFooter,
+    ensureHintIsLast,
+    getExtraFooterHeight,
+    getRenderer,
+    setFooterHeight,
+    writeString,
+} from './renderer'
 import { getRandomSpinner } from './spinner'
 
 // Horizontal margin applied identically to all widget elements.
@@ -31,6 +38,11 @@ export const createRichProgress = async (): Promise<RichProgress> => {
     let bar: number | undefined
     let details: string[] = []
 
+    // Track the maximum footer height ever used so the framebuffer never
+    // shrinks during live updates. This prevents old detail lines from
+    // persisting on screen when the content becomes shorter.
+    let maxTotalHeight = 4
+
     // Single FrameBufferRenderable covers the entire footer widget.
     let fb = new FrameBufferRenderable(r, {
         width: r.width,
@@ -39,7 +51,7 @@ export const createRichProgress = async (): Promise<RichProgress> => {
 
     r.root.add(fb)
     ensureHintIsLast(r)
-    r.footerHeight = 4 + getExtraFooterHeight()
+    setFooterHeight(r, 4 + getExtraFooterHeight())
 
     const refresh = () => {
         if (finished) return
@@ -48,8 +60,13 @@ export const createRichProgress = async (): Promise<RichProgress> => {
         const termWidth = r.width
         const totalHeight = 4 + details.length
 
-        // Recreate the framebuffer when dimensions change (details grow/shrink).
-        if (fb.width !== termWidth || fb.height !== totalHeight) {
+        // Track maximum height so we never shrink the framebuffer during
+        // live updates (which would leave ghost text on screen).
+        if (totalHeight > maxTotalHeight) maxTotalHeight = totalHeight
+
+        // Recreate the framebuffer only when width changes or when the
+        // current max height increases. Never shrink.
+        if (fb.width !== termWidth || fb.height !== maxTotalHeight) {
             try {
                 r.root.remove(fb.id)
                 fb.destroyRecursively()
@@ -58,14 +75,15 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             }
             fb = new FrameBufferRenderable(r, {
                 width: termWidth,
-                height: totalHeight,
+                height: maxTotalHeight,
             })
             r.root.add(fb)
             ensureHintIsLast(r)
         }
 
-        // Clear background before every draw.
-        fb.frameBuffer.fillRect(0, 0, termWidth, totalHeight, BG)
+        // Clear the ENTIRE framebuffer (not just totalHeight) so that
+        // previously drawn detail lines are erased.
+        fb.frameBuffer.fillRect(0, 0, termWidth, fb.height, BG)
 
         // Line 0: spinner + title
         fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${frame} ${title}`, 0, 0, TEXT, BG)
@@ -118,7 +136,7 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             }
         }
 
-        r.footerHeight = totalHeight + getExtraFooterHeight()
+        setFooterHeight(r, maxTotalHeight + getExtraFooterHeight())
         r.requestRender()
     }
 
@@ -139,12 +157,13 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             refresh()
         },
 
-        finish(_opts?: { title?: string }): void {
+        finish(opts?: { title?: string }): void {
             if (finished) return
             finished = true
             r.removeFrameCallback(frameCallback)
             r.dropLive()
             clearFooter(r)
+            if (opts?.title) writeString(opts.title)
         },
     }
 }
