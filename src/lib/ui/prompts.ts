@@ -8,6 +8,7 @@ import {
     TextRenderable,
 } from '@opentui/core'
 
+import { ansiToStyledText } from './layout'
 import { getRenderer, clearFooter, setFooterHeight, writeString } from './renderer'
 import { getRandomSpinner } from './spinner'
 
@@ -409,7 +410,7 @@ export const spinner = async (options: SpinnerOptions): Promise<void> => {
 
     const frameCallback = async (_dt: number) => {
         const frame = sp.frames[frameIdx % sp.frames.length]!
-        text.content = `  ${frame} ${currentMessage}`
+        text.content = ansiToStyledText(`  ${frame} ${currentMessage}`)
         frameIdx++
         r.requestRender()
     }

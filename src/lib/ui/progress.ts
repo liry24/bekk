@@ -41,24 +41,24 @@ export const createRichProgress = async (): Promise<RichProgress> => {
     // Track the maximum footer height ever used so the framebuffer never
     // shrinks during live updates. This prevents old detail lines from
     // persisting on screen when the content becomes shorter.
-    let maxTotalHeight = 4
+    let maxTotalHeight = 6
 
     // Single FrameBufferRenderable covers the entire footer widget.
     let fb = new FrameBufferRenderable(r, {
         width: r.width,
-        height: 4,
+        height: 6,
     })
 
     r.root.add(fb)
     ensureHintIsLast(r)
-    setFooterHeight(r, 4 + getExtraFooterHeight())
+    setFooterHeight(r, 6 + getExtraFooterHeight())
 
     const refresh = () => {
         if (finished) return
 
         const frame = spinner.frames[frameIdx % spinner.frames.length]!
         const termWidth = r.width
-        const totalHeight = 4 + details.length
+        const totalHeight = 6 + details.length
 
         // Track maximum height so we never shrink the framebuffer during
         // live updates (which would leave ghost text on screen).
@@ -85,10 +85,10 @@ export const createRichProgress = async (): Promise<RichProgress> => {
         // previously drawn detail lines are erased.
         fb.frameBuffer.fillRect(0, 0, termWidth, fb.height, BG)
 
-        // Line 0: spinner + title
-        fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${frame} ${title}`, 0, 0, TEXT, BG)
+        // Line 1: spinner + title  (line 0 is top padding)
+        fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${frame} ${title}`, 0, 1, TEXT, BG)
 
-        // Line 2: solid-colour progress bar + right-aligned percentage.
+        // Line 3: solid-colour progress bar + right-aligned percentage.
         //   MARGIN + barW + 1(space) + 6(pct) + MARGIN = termWidth
         //   → barW = termWidth - 2·MARGIN - 7
         if (bar !== undefined) {
@@ -98,15 +98,15 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             const filled = Math.floor(barW * (pct / 100))
 
             for (let i = 0; i < filled; i++)
-                fb.frameBuffer.setCell(MARGIN + i, 2, '█', BAR_FILL, BG)
+                fb.frameBuffer.setCell(MARGIN + i, 3, '█', BAR_FILL, BG)
 
             for (let i = filled; i < barW; i++)
-                fb.frameBuffer.setCell(MARGIN + i, 2, '░', BAR_EMPTY, BG)
+                fb.frameBuffer.setCell(MARGIN + i, 3, '░', BAR_EMPTY, BG)
 
-            fb.frameBuffer.drawText(pctStr, MARGIN + barW + 1, 2, TEXT, BG)
+            fb.frameBuffer.drawText(pctStr, MARGIN + barW + 1, 3, TEXT, BG)
         }
 
-        // Lines 3+: detail entries.
+        // Lines 5+: detail entries  (line 4 is the gap between bar and details)
         for (let i = 0; i < details.length; i++) {
             const detail = details[i]!
             const colonIdx = detail.indexOf(':')
@@ -117,19 +117,22 @@ export const createRichProgress = async (): Promise<RichProgress> => {
                     1,
                     termWidth - 2 * MARGIN - key.length - 1 - val.length,
                 )
-                fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${key}`, 0, 3 + i, DIM, BG)
-                fb.frameBuffer.drawText(
-                    ' ' + ' '.repeat(innerPadding) + val,
-                    MARGIN + key.length,
-                    3 + i,
-                    TEXT,
-                    BG,
-                )
+                fb.frameBuffer.drawText(`${' '.repeat(MARGIN)}${key}`, 0, 5 + i, DIM, BG)
+                // Draw value with any (...) segments rendered in DIM
+                const valX = MARGIN + key.length
+                const prefix = ' ' + ' '.repeat(innerPadding)
+                fb.frameBuffer.drawText(prefix, valX, 5 + i, TEXT, BG)
+                let curX = valX + prefix.length
+                for (const part of val.split(/(\([^)]*\))/)) {
+                    const partColor = /^\([^)]*\)$/.test(part) ? DIM : TEXT
+                    fb.frameBuffer.drawText(part, curX, 5 + i, partColor, BG)
+                    curX += part.length
+                }
             } else {
                 fb.frameBuffer.drawText(
                     `${' '.repeat(MARGIN)}${stripAnsi(detail)}`,
                     0,
-                    3 + i,
+                    5 + i,
                     TEXT,
                     BG,
                 )

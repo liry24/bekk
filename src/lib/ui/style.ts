@@ -1,8 +1,8 @@
 // ─── style.ts ─── ANSI formatters + layout utilities ─────────────────────────
-// These ANSI wrappers are intentionally kept as the canonical way to style
-// strings before passing them to writeString().  OpenTUI's stringToStyledText
-// parses the escape codes into native TextChunks so the output is still fully
-// native.
+// These ANSI wrappers produce SGR-coded strings suitable for writeString()
+// (passthrough mode) and ansiToStyledText() (layout.ts).
+// Do NOT pass them directly to OpenTUI TextRenderable or stringToStyledText —
+// those treat escape bytes as opaque characters, causing width miscalculations.
 
 import { stripAnsi } from './layout'
 
