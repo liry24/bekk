@@ -1,12 +1,8 @@
 import { isAbsolute, normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
-import {
-    getGitHubToken,
-    promptPassword,
-    setRepoPassword,
-} from '#lib/secrets'
 import { promptS3Destination, storeS3Secret } from '#lib/s3-helpers'
+import { getGitHubToken, promptPassword, setRepoPassword } from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
 import {
     bold,

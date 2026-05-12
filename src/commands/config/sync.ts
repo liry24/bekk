@@ -1,13 +1,13 @@
 import { destr } from 'destr'
 
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { promptS3Destination, storeS3Secret } from '#lib/s3-helpers'
 import {
     deleteGitHubToken,
     deleteS3SecretAccessKey,
     getGitHubToken,
     setGitHubToken,
 } from '#lib/secrets'
-import { promptS3Destination, storeS3Secret } from '#lib/s3-helpers'
 import type { S3Destination } from '#lib/types'
 import { bold, cyan, dim, green, multiselect, confirm, writeString } from '#lib/ui'
 
