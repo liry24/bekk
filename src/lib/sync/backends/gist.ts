@@ -1,7 +1,7 @@
 import { destr } from 'destr'
 import { ofetch } from 'ofetch'
 
-import type { SyncBackend, SyncData } from '#lib/types'
+import type { ConfigStore, SyncBackend, SyncData } from '#lib/types'
 
 import { configStore } from '../../../store'
 import { resolveGistId } from '../../github'
@@ -102,9 +102,15 @@ export const createGistBackend = (token: string): SyncBackend => {
 
             const configContent = await fetchFile(configFile)
             const parsedConfig = destr<Record<string, unknown>>(configContent)
+            const localConfig = await configStore.read()
 
-            const get = <T>(key: string, fallback: T, check: (v: unknown) => boolean) =>
-                check(parsedConfig[key]) ? (parsedConfig[key] as T) : fallback
+            const get = <K extends keyof ConfigStore>(
+                key: K,
+                check: (v: unknown) => boolean,
+            ): ConfigStore[K] => {
+                const remoteValue = parsedConfig[key]
+                return check(remoteValue) ? (remoteValue as ConfigStore[K]) : localConfig[key]
+            }
 
             // Read app lists from Gist if present
             const appLists: Record<string, import('#lib/types').App[] | null> = {}
@@ -118,31 +124,19 @@ export const createGistBackend = (token: string): SyncBackend => {
 
             return {
                 config: {
-                    sourcePaths: get('sourcePaths', [], Array.isArray),
-                    repoPath: get('repoPath', '', (v) => typeof v === 'string'),
-                    gistId: get('gistId', gistId, (v) => typeof v === 'string'),
-                    gistEnabled: get('gistEnabled', false, (v) => typeof v === 'boolean'),
-                    s3DestinationsJson: get(
-                        's3DestinationsJson',
-                        '[]',
-                        (v) => typeof v === 'string',
-                    ),
-                    scheduleConfigJson: get(
-                        'scheduleConfigJson',
-                        '{}',
-                        (v) => typeof v === 'string',
-                    ),
-                    compression: get('compression', 1, (v) => typeof v === 'number'),
-                    extraVerify: get('extraVerify', true, (v) => typeof v === 'boolean'),
-                    packSizeMib: get('packSizeMib', 32, (v) => typeof v === 'number'),
-                    chunkSizeMib: get('chunkSizeMib', 1, (v) => typeof v === 'number'),
-                    snapshotLimit: get('snapshotLimit', 1, (v) => typeof v === 'number'),
-                    savedPassword: get('savedPassword', '', (v) => typeof v === 'string'),
-                    providerConfigsJson: get(
-                        'providerConfigsJson',
-                        '{}',
-                        (v) => typeof v === 'string',
-                    ),
+                    sourcePaths: get('sourcePaths', Array.isArray),
+                    repoPath: get('repoPath', (v) => typeof v === 'string'),
+                    gistId: get('gistId', (v) => typeof v === 'string'),
+                    gistEnabled: get('gistEnabled', (v) => typeof v === 'boolean'),
+                    s3DestinationsJson: get('s3DestinationsJson', (v) => typeof v === 'string'),
+                    scheduleConfigJson: get('scheduleConfigJson', (v) => typeof v === 'string'),
+                    compression: get('compression', (v) => typeof v === 'number'),
+                    extraVerify: get('extraVerify', (v) => typeof v === 'boolean'),
+                    packSizeMib: get('packSizeMib', (v) => typeof v === 'number'),
+                    chunkSizeMib: get('chunkSizeMib', (v) => typeof v === 'number'),
+                    snapshotLimit: get('snapshotLimit', (v) => typeof v === 'number'),
+                    savedPassword: get('savedPassword', (v) => typeof v === 'string'),
+                    providerConfigsJson: get('providerConfigsJson', (v) => typeof v === 'string'),
                 },
                 appLists,
             }
