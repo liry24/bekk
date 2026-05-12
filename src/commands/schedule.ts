@@ -1,3 +1,4 @@
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 
 import { promptValidator } from '@crustjs/validate/zod'
@@ -6,7 +7,7 @@ import { z } from 'zod'
 
 import { fmtErr } from '#lib/error'
 import { isAdmin } from '#lib/platform'
-import { confirm, input, bold, cyan, dim, green, red, yellow, writeString } from '#lib/ui'
+import { input, bold, cyan, dim, green, red, yellow, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -17,8 +18,25 @@ const TASK_NAME = 'BekkDaemon'
 
 const getBinaryPath = () => process.execPath
 
-const exec = (args: string[], opts?: { cwd?: string; env?: Record<string, string> }) => {
-    const result = Bun.spawnSync(args, { ...opts, stdout: 'pipe', stderr: 'pipe' })
+const exec = (
+    args: string[],
+    opts?: { cwd?: string; env?: Record<string, string>; debug?: boolean },
+) => {
+    const { debug, ...spawnOpts } = opts ?? {}
+    if (debug) {
+        console.log(
+            dim('[debug] exec:'),
+            args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' '),
+        )
+    }
+    const result = Bun.spawnSync(args, { ...spawnOpts, stdout: 'pipe', stderr: 'pipe' })
+    if (debug) {
+        console.log(dim('[debug] exitCode:'), result.exitCode)
+        if (result.stdout.length > 0)
+            console.log(dim('[debug] stdout:'), new TextDecoder().decode(result.stdout).trim())
+        if (result.stderr.length > 0)
+            console.log(dim('[debug] stderr:'), new TextDecoder().decode(result.stderr).trim())
+    }
     if (result.exitCode !== 0) {
         throw new Error(new TextDecoder().decode(result.stderr).trim())
     }
@@ -27,34 +45,91 @@ const exec = (args: string[], opts?: { cwd?: string; env?: Record<string, string
 
 // Windows ──────────────────────────────────────────────────────────────────────
 
-const registerWindows = (exePath: string, admin: boolean) => {
-    const trigger = admin ? '/sc onstart' : '/sc onlogon'
-    const ruParam = admin ? '/ru SYSTEM' : ''
+const getWindowsStartupDir = () =>
+    join(
+        homedir(),
+        'AppData',
+        'Roaming',
+        'Microsoft',
+        'Windows',
+        'Start Menu',
+        'Programs',
+        'Startup',
+    )
+
+const getWindowsShortcutPath = () => join(getWindowsStartupDir(), 'BekkDaemon.lnk')
+
+const registerWindows = (exePath: string, admin: boolean, debug?: boolean) => {
+    if (admin) {
+        const trigger = '/sc onstart'
+        const ruParam = '/ru SYSTEM'
+        try {
+            exec(
+                [
+                    'schtasks',
+                    '/create',
+                    '/tn',
+                    TASK_NAME,
+                    '/tr',
+                    `${exePath} daemon`,
+                    ...trigger.split(' '),
+                    ...ruParam.split(' '),
+                    '/f',
+                ],
+                { debug },
+            )
+        } catch (err) {
+            throw new Error(`schtasks failed: ${fmtErr(err)}`)
+        }
+        return
+    }
+
+    // Non-admin: create a startup folder shortcut
+    const startupDir = getWindowsStartupDir()
+    const shortcutPath = getWindowsShortcutPath()
+
+    if (debug) {
+        console.log(dim('[debug] startupDir:'), startupDir)
+        console.log(dim('[debug] shortcutPath:'), shortcutPath)
+    }
+
+    const psScript = `
+$ws = New-Object -ComObject WScript.Shell
+$sc = $ws.CreateShortcut('${shortcutPath.replace(/'/g, "''")}')
+$sc.TargetPath = '${exePath.replace(/'/g, "''")}'
+$sc.Arguments = 'daemon'
+$sc.WorkingDirectory = '${process.cwd().replace(/'/g, "''")}'
+$sc.Save()
+`
+    const tmpPs = join(homedir(), 'AppData', 'Local', 'Temp', 'bekk-create-lnk.ps1')
+    writeFileSync(tmpPs, psScript)
     try {
-        exec([
-            'schtasks',
-            '/create',
-            '/tn',
-            TASK_NAME,
-            '/tr',
-            `"${exePath}" daemon`,
-            ...trigger.split(' '),
-            ...(ruParam ? ruParam.split(' ') : []),
-            '/f',
-        ])
+        exec(['powershell', '-ExecutionPolicy', 'Bypass', '-File', tmpPs], { debug })
     } catch (err) {
-        throw new Error(`schtasks failed: ${fmtErr(err)}`)
+        throw new Error(`Failed to create startup shortcut: ${fmtErr(err)}`)
     }
 }
 
-const unregisterWindows = () => {
+const unregisterWindows = (debug?: boolean) => {
+    // Try to remove scheduled task (admin case)
     try {
-        exec(['schtasks', '/delete', '/tn', TASK_NAME, '/f'])
+        exec(['schtasks', '/delete', '/tn', TASK_NAME, '/f'], { debug })
     } catch (err) {
         const msg = fmtErr(err)
-        // Treat "not found" as success
-        if (!msg.includes('not found') && !msg.includes('ERROR: The system cannot find'))
-            throw new Error(`schtasks failed: ${msg}`)
+        if (!msg.includes('not found') && !msg.includes('ERROR: The system cannot find')) {
+            if (debug) console.log(dim('[debug] schtasks delete failed (non-fatal):'), msg)
+        }
+    }
+
+    // Remove startup shortcut (non-admin case)
+    const shortcutPath = getWindowsShortcutPath()
+    if (existsSync(shortcutPath)) {
+        if (debug) console.log(dim('[debug] removing shortcut:'), shortcutPath)
+        try {
+            unlinkSync(shortcutPath)
+        } catch (err) {
+            if (debug) console.log(dim('[debug] unlink failed (non-fatal):'), fmtErr(err))
+        }
     }
 }
 
@@ -181,9 +256,21 @@ const registerCmd = app
     .sub('schedule')
     .sub('register')
     .meta({ description: 'Register bekk daemon as a startup service and set cron schedule' })
-    .run(async () => {
+    .flags({
+        debug: { type: 'boolean', short: 'd', description: 'Enable debug logging' },
+        cron: { type: 'string', short: 'c', description: 'Cron expression (e.g. "0 2 * * *")' },
+    })
+    .run(async ({ flags }) => {
         const admin = isAdmin()
         const exePath = getBinaryPath()
+        const debug = flags.debug
+        const cronFlag = flags.cron?.trim()
+
+        if (debug) {
+            console.log(dim('[debug] platform:'), process.platform)
+            console.log(dim('[debug] admin:'), admin)
+            console.log(dim('[debug] exePath:'), exePath)
+        }
 
         console.log(bold(cyan('=== bekk Schedule Registration ===')))
         console.log()
@@ -192,32 +279,39 @@ const registerCmd = app
 
         console.log()
 
-        const cronExpr = await input({
-            message: 'Cron expression (e.g. "0 2 * * *" for daily at 02:00 UTC)',
-            validate: promptValidator(
-                z.string().refine((v) => Bun.cron.parse(v.trim()) !== null, {
-                    message: 'Invalid cron expression',
-                }),
-            ),
-        })
+        let trimmedExpr: string
+        if (cronFlag) {
+            trimmedExpr = cronFlag
+            const next = Bun.cron.parse(trimmedExpr)
+            if (next === null) {
+                writeString(red('Invalid cron expression: ') + trimmedExpr)
+                process.exit(1)
+            }
+            console.log(dim('  Schedule: ') + cyan(trimmedExpr))
+            console.log(dim('  Next run: ') + cyan(next.toLocaleString()) + dim(' (UTC-based)'))
+            console.log()
+        } else {
+            const cronExpr = await input({
+                message: 'Cron expression (e.g. "0 2 * * *" for daily at 02:00 UTC)',
+                validate: promptValidator(
+                    z.string().refine((v) => Bun.cron.parse(v.trim()) !== null, {
+                        message: 'Invalid cron expression',
+                    }),
+                ),
+            })
 
-        const trimmedExpr = cronExpr.trim()
-        const next = Bun.cron.parse(trimmedExpr)!
+            trimmedExpr = cronExpr.trim()
+            const next = Bun.cron.parse(trimmedExpr)!
 
-        console.log()
-        console.log(dim('  Binary:   ') + dim(exePath))
-        console.log(dim('  Schedule: ') + cyan(trimmedExpr))
-        console.log(dim('  Next run: ') + cyan(next.toLocaleString()) + dim(' (UTC-based)'))
-        console.log()
-
-        const ok = await confirm({ message: 'Register with these settings?', default: true })
-        if (!ok) {
-            console.log(dim('Cancelled.'))
-            return
+            console.log()
+            console.log(dim('  Binary:   ') + dim(exePath))
+            console.log(dim('  Schedule: ') + cyan(trimmedExpr))
+            console.log(dim('  Next run: ') + cyan(next.toLocaleString()) + dim(' (UTC-based)'))
+            console.log()
         }
 
         try {
-            if (process.platform === 'win32') registerWindows(exePath, admin)
+            if (process.platform === 'win32') registerWindows(exePath, admin, debug)
             else if (process.platform === 'darwin') await registerMacOS(exePath, admin)
             else await registerLinux(exePath, admin)
         } catch (err) {
@@ -237,22 +331,15 @@ const unregisterCmd = app
     .sub('schedule')
     .sub('unregister')
     .meta({ description: 'Remove bekk daemon startup service and clear the cron schedule' })
-    .run(async () => {
+    .flags({
+        debug: { type: 'boolean', short: 'd', description: 'Enable debug logging' },
+    })
+    .run(async ({ flags }) => {
         const admin = isAdmin()
-
-        const ok = await confirm({
-            message: red('Remove bekk daemon startup service?'),
-            default: false,
-            active: 'Remove',
-            inactive: 'Cancel',
-        })
-        if (!ok) {
-            console.log(dim('Cancelled.'))
-            return
-        }
+        const debug = flags.debug
 
         try {
-            if (process.platform === 'win32') unregisterWindows()
+            if (process.platform === 'win32') unregisterWindows(debug)
             else if (process.platform === 'darwin') await unregisterMacOS(admin)
             else await unregisterLinux(admin)
         } catch (err) {
