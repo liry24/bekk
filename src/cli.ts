@@ -5,7 +5,6 @@ import { appsCmd } from './commands/apps'
 import { backupCmd } from './commands/backup'
 import { cleanCmd } from './commands/clean'
 import { configCmd } from './commands/config'
-import { daemonCmd } from './commands/daemon'
 import { gistCmd } from './commands/gist'
 import { initCmd } from './commands/init'
 import { pullCmd } from './commands/pull'
@@ -25,7 +24,6 @@ try {
         .command(pullCmd)
         .command(gistCmd)
         .command(scheduleCmd)
-        .command(daemonCmd)
         .command(cleanCmd)
         .command(initCmd)
         .execute()

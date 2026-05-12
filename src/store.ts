@@ -32,9 +32,9 @@ export const configStore = createStore({
             default: '',
             validate: fieldSync(z.string()),
         },
-        cronSchedule: {
+        scheduleConfigJson: {
             type: 'string',
-            default: '',
+            default: '{}',
             validate: fieldSync(z.string()),
         },
         gistEnabled: {

@@ -187,7 +187,7 @@ export interface InitConfigPayload {
     gistId: string
     gistEnabled: boolean
     s3DestinationsJson: string
-    cronSchedule: string
+    scheduleConfigJson: string
     compression: number
     extraVerify: boolean
     packSizeMib: number
@@ -215,7 +215,7 @@ const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     gistId: '',
     gistEnabled: false,
     s3DestinationsJson: '[]',
-    cronSchedule: '',
+    scheduleConfigJson: '{}',
     compression: 1,
     extraVerify: true,
     packSizeMib: 32,
@@ -363,5 +363,24 @@ export const bekkCore = {
                 repair_index: { ok?: boolean } | null
             }>
         >
+    },
+
+    scheduleInfo(opts: {
+        daily?: string
+        weekly?: [string, string]
+        monthly?: [string, string]
+        interval?: number
+    }) {
+        const args = ['schedule-info']
+        if (opts.daily) {
+            args.push('--daily', opts.daily)
+        } else if (opts.weekly) {
+            args.push('--weekly', opts.weekly[0], opts.weekly[1])
+        } else if (opts.monthly) {
+            args.push('--monthly', opts.monthly[0], opts.monthly[1])
+        } else if (opts.interval !== undefined) {
+            args.push('--interval', String(opts.interval))
+        }
+        return runBekkCore(args) as Promise<CoreResult<{ next_run: string }>>
     },
 }

@@ -127,7 +127,11 @@ export const createGistBackend = (token: string): SyncBackend => {
                         '[]',
                         (v) => typeof v === 'string',
                     ),
-                    cronSchedule: get('cronSchedule', '', (v) => typeof v === 'string'),
+                    scheduleConfigJson: get(
+                        'scheduleConfigJson',
+                        '{}',
+                        (v) => typeof v === 'string',
+                    ),
                     compression: get('compression', 1, (v) => typeof v === 'number'),
                     extraVerify: get('extraVerify', true, (v) => typeof v === 'boolean'),
                     packSizeMib: get('packSizeMib', 32, (v) => typeof v === 'number'),

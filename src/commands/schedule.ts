@@ -1,386 +1,227 @@
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-
-import { promptValidator } from '@crustjs/validate/zod'
-import { join } from 'pathe'
-import { z } from 'zod'
-
+import { bekkCore } from '#bekk-core'
+import { unwrapCoreResult } from '#lib/core-helpers'
 import { fmtErr } from '#lib/error'
-import { isAdmin } from '#lib/platform'
-import { input, bold, cyan, dim, green, red, yellow, writeString } from '#lib/ui'
+import { getScheduler } from '#lib/scheduler'
+import type { ScheduleConfig } from '#lib/scheduler'
+import { bold, cyan, dim, green, red, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
 
-const TASK_NAME = 'BekkDaemon'
+const TASK_LABEL = 'bekk-backup'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const getBinaryPath = () => process.execPath
-
-const exec = (
-    args: string[],
-    opts?: { cwd?: string; env?: Record<string, string>; debug?: boolean },
-) => {
-    const { debug, ...spawnOpts } = opts ?? {}
-    if (debug) {
-        console.log(
-            dim('[debug] exec:'),
-            args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' '),
-        )
+const parseScheduleConfig = (flags: {
+    daily?: string
+    weekly?: string
+    monthly?: string
+    interval?: number
+}): ScheduleConfig => {
+    if (flags.daily) {
+        return { type: 'daily', time: flags.daily.trim() }
     }
-    const result = Bun.spawnSync(args, { ...spawnOpts, stdout: 'pipe', stderr: 'pipe' })
-    if (debug) {
-        console.log(dim('[debug] exitCode:'), result.exitCode)
-        if (result.stdout.length > 0)
-            console.log(dim('[debug] stdout:'), new TextDecoder().decode(result.stdout).trim())
-        if (result.stderr.length > 0)
-            console.log(dim('[debug] stderr:'), new TextDecoder().decode(result.stderr).trim())
-    }
-    if (result.exitCode !== 0) {
-        throw new Error(new TextDecoder().decode(result.stderr).trim())
-    }
-    return new TextDecoder().decode(result.stdout).trim()
-}
-
-// Windows ──────────────────────────────────────────────────────────────────────
-
-const getWindowsStartupDir = () =>
-    join(
-        homedir(),
-        'AppData',
-        'Roaming',
-        'Microsoft',
-        'Windows',
-        'Start Menu',
-        'Programs',
-        'Startup',
-    )
-
-const getWindowsShortcutPath = () => join(getWindowsStartupDir(), 'BekkDaemon.lnk')
-
-const registerWindows = (exePath: string, admin: boolean, debug?: boolean) => {
-    if (admin) {
-        const trigger = '/sc onstart'
-        const ruParam = '/ru SYSTEM'
-        try {
-            exec(
-                [
-                    'schtasks',
-                    '/create',
-                    '/tn',
-                    TASK_NAME,
-                    '/tr',
-                    `${exePath} daemon`,
-                    ...trigger.split(' '),
-                    ...ruParam.split(' '),
-                    '/f',
-                ],
-                { debug },
-            )
-        } catch (err) {
-            throw new Error(`schtasks failed: ${fmtErr(err)}`)
+    if (flags.weekly) {
+        const parts = flags.weekly.trim().split(/\s+/)
+        if (parts.length !== 2) {
+            throw new Error('Weekly schedule must be "DOW HH:MM"')
         }
-        return
+        return { type: 'weekly', day: parts[0], time: parts[1] }
     }
-
-    // Non-admin: create a startup folder shortcut
-    const startupDir = getWindowsStartupDir()
-    const shortcutPath = getWindowsShortcutPath()
-
-    if (debug) {
-        console.log(dim('[debug] startupDir:'), startupDir)
-        console.log(dim('[debug] shortcutPath:'), shortcutPath)
-    }
-
-    const psScript = `
-$ws = New-Object -ComObject WScript.Shell
-$sc = $ws.CreateShortcut('${shortcutPath.replace(/'/g, "''")}')
-$sc.TargetPath = '${exePath.replace(/'/g, "''")}'
-$sc.Arguments = 'daemon'
-$sc.WorkingDirectory = '${process.cwd().replace(/'/g, "''")}'
-$sc.Save()
-`
-    const tmpPs = join(homedir(), 'AppData', 'Local', 'Temp', 'bekk-create-lnk.ps1')
-    writeFileSync(tmpPs, psScript)
-    try {
-        exec(['powershell', '-ExecutionPolicy', 'Bypass', '-File', tmpPs], { debug })
-    } catch (err) {
-        throw new Error(`Failed to create startup shortcut: ${fmtErr(err)}`)
-    }
-}
-
-const unregisterWindows = (debug?: boolean) => {
-    // Try to remove scheduled task (admin case)
-    try {
-        exec(['schtasks', '/delete', '/tn', TASK_NAME, '/f'], { debug })
-    } catch (err) {
-        const msg = fmtErr(err)
-        if (!msg.includes('not found') && !msg.includes('ERROR: The system cannot find')) {
-            if (debug) console.log(dim('[debug] schtasks delete failed (non-fatal):'), msg)
+    if (flags.monthly) {
+        const parts = flags.monthly.trim().split(/\s+/)
+        if (parts.length !== 2) {
+            throw new Error('Monthly schedule must be "DAY HH:MM"')
         }
+        return { type: 'monthly', day: parts[0], time: parts[1] }
     }
+    if (flags.interval !== undefined) {
+        return { type: 'interval', interval: flags.interval }
+    }
+    throw new Error('No schedule option provided')
+}
 
-    // Remove startup shortcut (non-admin case)
-    const shortcutPath = getWindowsShortcutPath()
-    if (existsSync(shortcutPath)) {
-        if (debug) console.log(dim('[debug] removing shortcut:'), shortcutPath)
-        try {
-            unlinkSync(shortcutPath)
-        } catch (err) {
-            if (debug) console.log(dim('[debug] unlink failed (non-fatal):'), fmtErr(err))
+const validateTime = (time: string) => {
+    if (!/^\d{1,2}:\d{2}$/.test(time)) {
+        throw new Error(`Invalid time format: ${time}. Expected HH:MM`)
+    }
+    const [h, m] = time.split(':').map(Number)
+    if (h! < 0 || h! > 23 || m! < 0 || m! > 59) {
+        throw new Error(`Invalid time: ${time}`)
+    }
+}
+
+const validateDay = (type: 'weekly' | 'monthly', day: string) => {
+    if (type === 'weekly') {
+        const valid = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        if (!valid.includes(day.toLowerCase())) {
+            throw new Error(`Invalid day of week: ${day}`)
         }
-    }
-}
-
-// macOS ────────────────────────────────────────────────────────────────────────
-
-const getMacOSPlistPath = (admin: boolean) =>
-    admin
-        ? `/Library/LaunchDaemons/com.bekk.daemon.plist`
-        : join(homedir(), 'Library', 'LaunchAgents', 'com.bekk.daemon.plist')
-
-const buildMacOSPlist = (exePath: string, admin: boolean) => {
-    const label = 'com.bekk.daemon'
-    const logDir = admin ? '/var/log' : join(homedir(), 'Library', 'Logs')
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${label}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>${exePath}</string>
-        <string>daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <false/>
-    <key>StandardOutPath</key>
-    <string>${join(logDir, 'bekk-daemon.log')}</string>
-    <key>StandardErrorPath</key>
-    <string>${join(logDir, 'bekk-daemon-error.log')}</string>
-</dict>
-</plist>`
-}
-
-const registerMacOS = async (exePath: string, admin: boolean) => {
-    const plistPath = getMacOSPlistPath(admin)
-    await Bun.write(plistPath, buildMacOSPlist(exePath, admin))
-
-    if (admin) {
-        exec(['launchctl', 'load', plistPath])
     } else {
-        const uid = String(process.getuid?.() ?? 501)
-        exec(['launchctl', 'bootstrap', `gui/${uid}`, plistPath])
+        const d = Number(day)
+        if (isNaN(d) || d < 1 || d > 31) {
+            throw new Error(`Invalid day of month: ${day}`)
+        }
     }
 }
 
-const unregisterMacOS = async (admin: boolean) => {
-    const plistPath = getMacOSPlistPath(admin)
-    if (!(await Bun.file(plistPath).exists())) return
-
-    if (admin) {
-        exec(['launchctl', 'unload', plistPath])
-    } else {
-        const uid = String(process.getuid?.() ?? 501)
-        exec(['launchctl', 'bootout', `gui/${uid}`, plistPath])
+const getProgramAndArgs = (): { program: string; args: string[] } => {
+    const isBun = /bun(\.exe)?$/i.test(process.execPath)
+    if (isBun) {
+        return { program: process.execPath, args: [process.argv[1]!, 'backup'] }
     }
+    return { program: process.execPath, args: ['backup'] }
+}
+
+const saveScheduleConfig = async (config: ScheduleConfig) => {
+    await configStore.patch({ scheduleConfigJson: JSON.stringify(config) })
+}
+
+const clearScheduleConfig = async () => {
+    await configStore.patch({ scheduleConfigJson: '{}' })
+}
+
+const readScheduleConfig = async (): Promise<ScheduleConfig | null> => {
+    const cfg = await configStore.read()
+    if (!cfg.scheduleConfigJson || cfg.scheduleConfigJson === '{}') return null
     try {
-        exec(['rm', '-f', plistPath])
+        return JSON.parse(cfg.scheduleConfigJson) as ScheduleConfig
     } catch {
-        // ignore
+        return null
     }
 }
 
-// Linux ────────────────────────────────────────────────────────────────────────
-
-const getLinuxServicePath = (admin: boolean) =>
-    admin
-        ? '/etc/systemd/system/bekk-daemon.service'
-        : join(homedir(), '.config', 'systemd', 'user', 'bekk-daemon.service')
-
-const buildLinuxUnit = (exePath: string) => `[Unit]
-Description=bekk backup daemon
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=${exePath} daemon
-Restart=on-failure
-RestartSec=30
-
-[Install]
-WantedBy=default.target
-`
-
-const registerLinux = async (exePath: string, admin: boolean) => {
-    const servicePath = getLinuxServicePath(admin)
-    const serviceDir = servicePath.replace(/\/[^/]+$/, '')
-    exec(['mkdir', '-p', serviceDir])
-    await Bun.write(servicePath, buildLinuxUnit(exePath))
-
-    const args = admin
-        ? ['systemctl', 'enable', '--now', 'bekk-daemon']
-        : ['systemctl', '--user', 'enable', '--now', 'bekk-daemon']
-    try {
-        exec(args)
-    } catch (err) {
-        throw new Error(`systemctl failed: ${fmtErr(err)}`)
+const formatSchedule = (config: ScheduleConfig): string => {
+    switch (config.type) {
+        case 'daily':
+            return `Daily at ${config.time}`
+        case 'weekly':
+            return `Weekly on ${config.day} at ${config.time}`
+        case 'monthly':
+            return `Monthly on day ${config.day} at ${config.time}`
+        case 'interval':
+            return `Every ${config.interval} minutes`
     }
 }
 
-const unregisterLinux = async (admin: boolean) => {
-    const stopArgs = admin
-        ? ['systemctl', 'disable', '--now', 'bekk-daemon']
-        : ['systemctl', '--user', 'disable', '--now', 'bekk-daemon']
-    try {
-        exec(stopArgs)
-    } catch {
-        // ignore stop errors
-    }
-
-    const servicePath = getLinuxServicePath(admin)
-    try {
-        exec(['rm', '-f', servicePath])
-    } catch {
-        // ignore
-    }
+const buildScheduleInfoOpts = (config: ScheduleConfig) => {
+    if (config.type === 'daily') return { daily: config.time }
+    if (config.type === 'weekly') return { weekly: [config.day!, config.time!] as [string, string] }
+    if (config.type === 'monthly')
+        return { monthly: [config.day!, config.time!] as [string, string] }
+    return { interval: config.interval }
 }
 
-// ─── schedule register ────────────────────────────────────────────────────────
+// ─── schedule add ─────────────────────────────────────────────────────────────
 
-const registerCmd = app
+const addCmd = app
     .sub('schedule')
-    .sub('register')
-    .meta({ description: 'Register bekk daemon as a startup service and set cron schedule' })
+    .sub('add')
+    .meta({ description: 'Register a scheduled backup task' })
     .flags({
-        debug: { type: 'boolean', short: 'd', description: 'Enable debug logging' },
-        cron: { type: 'string', short: 'c', description: 'Cron expression (e.g. "0 2 * * *")' },
+        daily: { type: 'string', description: 'Daily schedule (HH:MM)' },
+        weekly: { type: 'string', description: 'Weekly schedule (DOW HH:MM)' },
+        monthly: { type: 'string', description: 'Monthly schedule (DAY HH:MM)' },
+        interval: { type: 'number', description: 'Interval in minutes' },
     })
     .run(async ({ flags }) => {
-        const admin = isAdmin()
-        const exePath = getBinaryPath()
-        const debug = flags.debug
-        const cronFlag = flags.cron?.trim()
-
-        if (debug) {
-            console.log(dim('[debug] platform:'), process.platform)
-            console.log(dim('[debug] admin:'), admin)
-            console.log(dim('[debug] exePath:'), exePath)
-        }
-
-        console.log(bold(cyan('=== bekk Schedule Registration ===')))
-        console.log()
-        if (admin) console.log(green('  [Admin] Daemon will run as a system service.'))
-        else console.log(yellow('  [User] Daemon will run as the current user.'))
-
-        console.log()
-
-        let trimmedExpr: string
-        if (cronFlag) {
-            trimmedExpr = cronFlag
-            const next = Bun.cron.parse(trimmedExpr)
-            if (next === null) {
-                writeString(red('Invalid cron expression: ') + trimmedExpr)
-                process.exit(1)
-            }
-            console.log(dim('  Schedule: ') + cyan(trimmedExpr))
-            console.log(dim('  Next run: ') + cyan(next.toLocaleString()) + dim(' (UTC-based)'))
-            console.log()
-        } else {
-            const cronExpr = await input({
-                message: 'Cron expression (e.g. "0 2 * * *" for daily at 02:00 UTC)',
-                validate: promptValidator(
-                    z.string().refine((v) => Bun.cron.parse(v.trim()) !== null, {
-                        message: 'Invalid cron expression',
-                    }),
-                ),
-            })
-
-            trimmedExpr = cronExpr.trim()
-            const next = Bun.cron.parse(trimmedExpr)!
-
-            console.log()
-            console.log(dim('  Binary:   ') + dim(exePath))
-            console.log(dim('  Schedule: ') + cyan(trimmedExpr))
-            console.log(dim('  Next run: ') + cyan(next.toLocaleString()) + dim(' (UTC-based)'))
-            console.log()
-        }
-
+        let config: ScheduleConfig
         try {
-            if (process.platform === 'win32') registerWindows(exePath, admin, debug)
-            else if (process.platform === 'darwin') await registerMacOS(exePath, admin)
-            else await registerLinux(exePath, admin)
+            config = parseScheduleConfig(flags as never)
         } catch (err) {
-            writeString(red('Failed to register startup task: ') + fmtErr(err))
+            writeString(red('Error: ') + fmtErr(err))
             process.exit(1)
         }
 
-        await configStore.patch({ cronSchedule: trimmedExpr })
-
-        console.log(green('✓ ' + bold('Daemon registered.')))
-        console.log(dim('  Start manually now with: ') + cyan('bekk daemon'))
-    })
-
-// ─── schedule unregister ──────────────────────────────────────────────────────
-
-const unregisterCmd = app
-    .sub('schedule')
-    .sub('unregister')
-    .meta({ description: 'Remove bekk daemon startup service and clear the cron schedule' })
-    .flags({
-        debug: { type: 'boolean', short: 'd', description: 'Enable debug logging' },
-    })
-    .run(async ({ flags }) => {
-        const admin = isAdmin()
-        const debug = flags.debug
+        if (config.time) validateTime(config.time)
+        if (config.type === 'weekly' || config.type === 'monthly') {
+            validateDay(config.type, config.day!)
+        }
 
         try {
-            if (process.platform === 'win32') unregisterWindows(debug)
-            else if (process.platform === 'darwin') await unregisterMacOS(admin)
-            else await unregisterLinux(admin)
+            unwrapCoreResult(await bekkCore.scheduleInfo(buildScheduleInfoOpts(config)))
         } catch (err) {
-            writeString(red('Failed to remove startup task: ') + fmtErr(err))
+            writeString(red('Invalid schedule: ') + fmtErr(err))
             process.exit(1)
         }
 
-        await configStore.patch({ cronSchedule: '' })
-        console.log(green('✓ ' + bold('Daemon unregistered and schedule cleared.')))
+        const scheduler = getScheduler()
+        const { program, args } = getProgramAndArgs()
+
+        try {
+            await scheduler.install(TASK_LABEL, program, args, config)
+        } catch (err) {
+            writeString(red('Failed to install schedule: ') + fmtErr(err))
+            process.exit(1)
+        }
+
+        await saveScheduleConfig(config)
+        console.log(green('✓ ') + bold('Schedule registered'))
+        console.log(dim('  ') + formatSchedule(config))
     })
 
-// ─── schedule status ──────────────────────────────────────────────────────────
+// ─── schedule rm ──────────────────────────────────────────────────────────────
 
-const statusCmd = app
+const rmCmd = app
     .sub('schedule')
-    .sub('status')
-    .meta({ description: 'Show current backup schedule and next run time' })
+    .sub('rm')
+    .meta({ description: 'Remove the scheduled backup task' })
     .run(async () => {
-        const cfg = await configStore.read()
+        const scheduler = getScheduler()
 
-        if (!cfg.cronSchedule) {
-            writeString('No schedule configured. Run ' + cyan('bekk schedule register') + '.')
-            return
+        try {
+            await scheduler.uninstall(TASK_LABEL)
+        } catch (err) {
+            writeString(red('Failed to remove schedule: ') + fmtErr(err))
+            process.exit(1)
         }
 
-        const next = Bun.cron.parse(cfg.cronSchedule)
-        console.log(bold('Backup Schedule'))
-        console.log(dim('  Expression: ') + cyan(cfg.cronSchedule))
-        console.log(
-            dim('  Next run:   ') +
-                (next
-                    ? cyan(next.toLocaleString()) + dim(' (UTC-based)')
-                    : red('(invalid expression)')),
-        )
+        await clearScheduleConfig()
+        console.log(green('✓ ') + bold('Schedule removed'))
     })
 
-// ─── schedule (container) ────────────────────────────────────────────────────
+// ─── schedule (default) ───────────────────────────────────────────────────────
+
+const showStatus = async () => {
+    const config = await readScheduleConfig()
+    const scheduler = getScheduler()
+    const status = await scheduler.status(TASK_LABEL)
+
+    console.log(bold('Backup Schedule'))
+    console.log()
+
+    if (!config || !status.installed) {
+        console.log(dim('  No schedule configured.'))
+    } else {
+        console.log(dim('  Status:   ') + green('Installed'))
+        console.log(dim('  Type:     ') + cyan(config.type))
+        console.log(dim('  Details:  ') + cyan(formatSchedule(config)))
+
+        try {
+            const result = unwrapCoreResult(
+                await bekkCore.scheduleInfo(buildScheduleInfoOpts(config)),
+            )
+            if (result?.next_run) {
+                const next = new Date(result.next_run)
+                console.log(dim('  Next run: ') + cyan(next.toLocaleString()))
+            }
+        } catch {
+            // ignore errors fetching next run
+        }
+    }
+
+    console.log()
+    console.log(bold('Usage'))
+    console.log(dim('  ') + 'bekk schedule add --daily HH:MM')
+    console.log(dim('  ') + 'bekk schedule add --weekly "DOW HH:MM"')
+    console.log(dim('  ') + 'bekk schedule add --monthly "DAY HH:MM"')
+    console.log(dim('  ') + 'bekk schedule add --interval MINUTES')
+    console.log(dim('  ') + 'bekk schedule rm')
+}
 
 export const scheduleCmd = app
     .sub('schedule')
     .meta({ description: 'Manage the automated backup schedule' })
-    .command(registerCmd)
-    .command(unregisterCmd)
-    .command(statusCmd)
+    .command(addCmd)
+    .command(rmCmd)
+    .run(async () => {
+        await showStatus()
+    })
