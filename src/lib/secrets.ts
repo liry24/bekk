@@ -108,3 +108,19 @@ export const setS3SecretAccessKey = async (destinationName: string, value: strin
 
 export const deleteS3SecretAccessKey = async (destinationName: string) =>
     Bun.secrets.delete({ service: S3_SERVICE, name: destinationName })
+
+// ─── GitHub Token ─────────────────────────────────────────────────────────────
+
+const GITHUB_SERVICE = 'bekk-github'
+const GITHUB_TOKEN_KEY = 'token'
+
+export const getGitHubToken = async (): Promise<string | undefined> => {
+    const value = await Bun.secrets.get({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY })
+    return value ?? undefined
+}
+
+export const setGitHubToken = async (value: string) =>
+    Bun.secrets.set({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY, value })
+
+export const deleteGitHubToken = async () =>
+    Bun.secrets.delete({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY })

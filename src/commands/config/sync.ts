@@ -1,12 +1,32 @@
 import { destr } from 'destr'
 
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
-import { deleteS3SecretAccessKey, setS3SecretAccessKey } from '#lib/secrets'
+import {
+    deleteGitHubToken,
+    deleteS3SecretAccessKey,
+    getGitHubToken,
+    setGitHubToken,
+    setS3SecretAccessKey,
+} from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
 import { bold, cyan, dim, green, input, multiselect, password, confirm, writeString } from '#lib/ui'
 
-import { authStore, configStore } from '../../store'
+import { configStore } from '../../store'
 import { runMenu, type MenuItem } from './menu'
+
+const validateUrl = (value: string): true | string => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    try {
+        const url = new URL(trimmed)
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return 'Endpoint must use http:// or https://'
+        }
+        return true
+    } catch {
+        return 'Invalid URL format'
+    }
+}
 
 type S3Action = 'add' | 'remove' | 'back'
 type SyncAction = 'gist' | 's3' | 'back'
@@ -52,6 +72,7 @@ const configureS3Destinations = async () => {
                     const endpoint = await input({
                         message: `  Endpoint  ${dim('(leave blank for AWS standard)')}`,
                         placeholder: 'e.g. https://accountid.r2.cloudflarestorage.com',
+                        validate: validateUrl,
                     })
 
                     const region = await input({
@@ -123,7 +144,7 @@ export const configureSyncBackends = async () => {
         async () => {
             const cfg = await configStore.read()
             const s3Destinations = destr<S3Destination[]>(cfg.s3DestinationsJson) ?? []
-            const { token } = await authStore.read()
+            const token = await getGitHubToken()
             const gistStatus =
                 cfg.gistEnabled && token
                     ? 'enabled'
@@ -137,7 +158,7 @@ export const configureSyncBackends = async () => {
                     value: 'gist',
                     hint: gistStatus,
                     handler: async () => {
-                        const { token } = await authStore.read()
+                        const token = await getGitHubToken()
                         const cfg = await configStore.read()
                         if (cfg.gistEnabled && token) {
                             const username = await getAuthenticatedUser(token)
@@ -146,6 +167,7 @@ export const configureSyncBackends = async () => {
                                 default: false,
                             })
                             if (ok) {
+                                await deleteGitHubToken()
                                 await configStore.patch({ gistEnabled: false })
                                 writeString(green('Gist sync disabled.'))
                             }
@@ -160,7 +182,7 @@ export const configureSyncBackends = async () => {
                                         'Authentication required. Starting GitHub Device Flow...',
                                     )
                                     const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
-                                    await authStore.patch({ token: newToken })
+                                    await setGitHubToken(newToken)
                                 }
                                 await configStore.patch({ gistEnabled: true })
                                 writeString(green('Gist sync enabled.'))

@@ -1,8 +1,9 @@
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { deleteGitHubToken, getGitHubToken, setGitHubToken } from '#lib/secrets'
 import { bold, cyan, dim, green, yellow, confirm, writeString } from '#lib/ui'
 
 import { app } from '../app'
-import { authStore, configStore } from '../store'
+import { configStore } from '../store'
 
 // ─── gist login ───────────────────────────────────────────────────────────────
 
@@ -11,7 +12,7 @@ const loginCmd = app
     .sub('login')
     .meta({ description: 'Authenticate via GitHub Device Flow' })
     .run(async () => {
-        const { token } = await authStore.read()
+        const token = await getGitHubToken()
 
         if (token) {
             const username = await getAuthenticatedUser(token)
@@ -26,7 +27,7 @@ const loginCmd = app
         writeString('Starting GitHub Device Flow authentication...')
 
         const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
-        await authStore.patch({ token: newToken })
+        await setGitHubToken(newToken)
         await configStore.patch({ gistEnabled: true })
 
         const username = await getAuthenticatedUser(newToken)
@@ -42,7 +43,7 @@ const logoutCmd = app
     .sub('logout')
     .meta({ description: 'Remove stored authentication token' })
     .run(async () => {
-        const { token } = await authStore.read()
+        const token = await getGitHubToken()
 
         if (!token) {
             writeString(dim('Not authenticated.'))
@@ -64,7 +65,7 @@ const logoutCmd = app
             return
         }
 
-        await authStore.patch({ token: '' })
+        await deleteGitHubToken()
         await configStore.patch({ gistEnabled: false })
         writeString(green('Signed out. Gist sync disabled.'))
     })

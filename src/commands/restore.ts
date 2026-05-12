@@ -1,4 +1,5 @@
 import { commandValidator, flag } from '@crustjs/validate/zod'
+import { isAbsolute } from 'pathe'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
@@ -7,6 +8,14 @@ import { fmtErr } from '#lib/error'
 import { bold, dim, green, red, input, spinner, writeString } from '#lib/ui'
 
 import { app } from '../app'
+
+const validateTargetPath = (value: string): true | string => {
+    const trimmed = value.trim()
+    if (!trimmed) return 'Target path is required'
+    if (trimmed.includes('\0')) return 'Path cannot contain null bytes'
+    if (!isAbsolute(trimmed)) return 'Path must be absolute'
+    return true
+}
 
 export const restoreCmd = app
     .sub('restore')
@@ -28,11 +37,15 @@ export const restoreCmd = app
         commandValidator(async ({ flags }) => {
             try {
                 await withRepoAuth(async (cfg, password) => {
+                    if (flags.target) {
+                        const validation = validateTargetPath(flags.target)
+                        if (validation !== true) throw new Error(validation)
+                    }
                     const target =
                         flags.target ??
                         (await input({
                             message: 'Restore target path',
-                            validate: (v) => (v.trim() ? true : 'Target path is required'),
+                            validate: validateTargetPath,
                         }))
 
                     const snapshotLabel =

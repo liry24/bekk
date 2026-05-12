@@ -1,7 +1,12 @@
-import { normalize } from 'pathe'
+import { isAbsolute, normalize } from 'pathe'
 
 import { bekkCore } from '#bekk-core'
-import { promptPassword, setRepoPassword, setS3SecretAccessKey } from '#lib/secrets'
+import {
+    getGitHubToken,
+    promptPassword,
+    setRepoPassword,
+    setS3SecretAccessKey,
+} from '#lib/secrets'
 import type { S3Destination } from '#lib/types'
 import {
     bold,
@@ -20,9 +25,30 @@ import {
 } from '#lib/ui'
 
 import { app } from '../app'
-import { authStore, configStore } from '../store'
+import { configStore } from '../store'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+const validatePath = (value: string, allowRelative = false): true | string => {
+    const trimmed = value.trim()
+    if (trimmed.includes('\0')) return 'Path cannot contain null bytes'
+    if (!allowRelative && !isAbsolute(trimmed)) return 'Path must be absolute'
+    return true
+}
+
+const validateUrl = (value: string): true | string => {
+    const trimmed = value.trim()
+    if (!trimmed) return true
+    try {
+        const url = new URL(trimmed)
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            return 'Endpoint must use http:// or https://'
+        }
+        return true
+    } catch {
+        return 'Invalid URL format'
+    }
+}
 
 async function collectSourcePaths(): Promise<string[]> {
     writeString(dim('Enter source paths to back up (leave empty to finish):'))
@@ -31,6 +57,11 @@ async function collectSourcePaths(): Promise<string[]> {
         const raw = await input({
             message: 'Add source path',
             placeholder: 'Leave empty to finish',
+            validate: (v) => {
+                const trimmed = v.trim()
+                if (!trimmed) return true
+                return validatePath(trimmed, true)
+            },
         })
         const trimmed = raw.trim()
         if (!trimmed) break
@@ -73,6 +104,7 @@ async function collectS3Destinations(): Promise<S3Destination[]> {
         const endpoint = await input({
             message: `  Endpoint  ${dim('(leave blank for AWS standard)')}`,
             placeholder: 'e.g. https://accountid.r2.cloudflarestorage.com',
+            validate: validateUrl,
         })
 
         const region = await input({
@@ -196,14 +228,23 @@ export const initCmd = app
                       : 'e.g. /mnt/backup/bekk'
             repoPath = await input({
                 message: `Local folder path  ${dim(placeholder)}`,
-                validate: (v) => (v.trim() ? true : 'Path is required'),
+                validate: (v) => {
+                    const trimmed = v.trim()
+                    if (!trimmed) return 'Path is required'
+                    return validatePath(trimmed)
+                },
             })
         } else {
             writeString(dim('  rclone remote paths look like:  myremote:bucket/folder'))
             writeString(dim('  Run `rclone config` to manage remotes.'))
             repoPath = await input({
                 message: 'rclone path  (e.g. myremote:bucket/bekk)',
-                validate: (v) => (v.trim() ? true : 'Path is required'),
+                validate: (v) => {
+                    const trimmed = v.trim()
+                    if (!trimmed) return 'Path is required'
+                    if (trimmed.includes('\0')) return 'Path cannot contain null bytes'
+                    return true
+                },
             })
         }
 
@@ -276,7 +317,7 @@ export const initCmd = app
         let s3Destinations: S3Destination[] = []
 
         if (backendChoices.includes('gist')) {
-            const { token } = await authStore.read()
+            const token = await getGitHubToken()
             if (token) {
                 gistEnabled = true
             } else {
