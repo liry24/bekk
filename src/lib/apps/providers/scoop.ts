@@ -25,7 +25,7 @@ const listScoop = () => {
             '-ExecutionPolicy',
             'Bypass',
             '-Command',
-            'scoop export',
+            "& 'scoop' 'export'",
         ],
         { stderr: 'ignore' },
     )
@@ -63,6 +63,7 @@ export const scoopProvider: PackageProvider = {
     },
 
     install: async (app) => {
+        const pkg = `${app.name}@${app.version}`.replace(/'/g, "''")
         const result = Bun.spawnSync(
             [
                 'powershell.exe',
@@ -71,7 +72,7 @@ export const scoopProvider: PackageProvider = {
                 '-ExecutionPolicy',
                 'Bypass',
                 '-Command',
-                `scoop install "${app.name}@${app.version}"`,
+                `& 'scoop' 'install' '${pkg}'`,
             ],
             { stderr: 'pipe' },
         )

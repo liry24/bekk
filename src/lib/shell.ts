@@ -6,7 +6,7 @@ export const commandExists = (cmd: string) => {
             '-NoProfile',
             '-NonInteractive',
             '-Command',
-            `Get-Command ${cmd} -ErrorAction SilentlyContinue`,
+            `Get-Command '${cmd.replace(/'/g, "''")}' -ErrorAction SilentlyContinue`,
         ],
         { stderr: 'ignore' },
     )

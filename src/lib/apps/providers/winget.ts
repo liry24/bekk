@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { destr } from 'destr'
 
 import { commandExists } from '#lib/shell'
@@ -20,14 +22,16 @@ interface WingetExportJson {
 }
 
 const listWinget = async (includeSources: string[]) => {
-    const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${Date.now()}.json`
+    const tmpFile = `${process.env.TEMP ?? '/tmp'}/bekk-winget-export-${randomUUID()}.json`
     const exportResult = Bun.spawnSync(
         [
-            'powershell.exe',
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `winget export -o "${tmpFile}" --include-versions --accept-source-agreements --disable-interactivity`,
+            'winget',
+            'export',
+            '-o',
+            tmpFile,
+            '--include-versions',
+            '--accept-source-agreements',
+            '--disable-interactivity',
         ],
         { stderr: 'ignore' },
     )
@@ -107,11 +111,13 @@ export const wingetProvider: PackageProvider = {
         const id = (app.meta?.id as string | undefined) ?? app.name
         const result = Bun.spawnSync(
             [
-                'powershell.exe',
-                '-NoProfile',
-                '-NonInteractive',
-                '-Command',
-                `winget install --id "${id}" --exact --accept-source-agreements --disable-interactivity`,
+                'winget',
+                'install',
+                '--id',
+                id,
+                '--exact',
+                '--accept-source-agreements',
+                '--disable-interactivity',
             ],
             { stderr: 'pipe' },
         )
