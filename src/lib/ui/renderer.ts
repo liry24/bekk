@@ -3,7 +3,6 @@
 import {
     createCliRenderer,
     TextRenderable,
-    stringToStyledText,
     type CliRenderer,
     type KeyEvent,
     type StyledText,
@@ -140,16 +139,14 @@ export const writeScrollback = (content: StyledText): void => {
     process.stdout.write(content.chunks.map((c) => c.text).join('') + '\n')
 }
 
-/** Write a plain string (with optional ANSI codes) to scrollback via OpenTUI. */
+/** Write a plain string (with optional ANSI codes) to scrollback. */
 export const writeString = (content: string): void => {
     if (_renderer && !_renderer.isDestroyed) {
         try {
-            _renderer.writeToScrollback((ctx) => {
-                const text = new TextRenderable(ctx.renderContext, {
-                    content: stringToStyledText(content),
-                })
-                return { root: text, trailingNewline: true }
-            })
+            const prevMode = _renderer.externalOutputMode
+            _renderer.externalOutputMode = 'passthrough'
+            process.stdout.write(content + '\n')
+            _renderer.externalOutputMode = prevMode
             return
         } catch {
             // fall through

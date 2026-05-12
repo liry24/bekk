@@ -240,19 +240,33 @@ export const select = async <T = string>(options: SelectOptions<T>): Promise<T> 
         const defaultIdx =
             defaultValue !== undefined ? choices.findIndex((c) => c.value === defaultValue) : 0
 
+        // Calculate appropriate height based on showDescription and terminal height
+        // Each item takes 2 lines when showing description (label + hint), 1 line otherwise
+        const linesPerItem = showDescription ? 2 : 1
+        const labelHeight = 1
+        const padding = 1
+
+        // Calculate how many items fit in the terminal (ensure at least 1 item)
+        // Use terminalHeight (actual terminal height), not r.height (footer height in split-footer mode)
+        const terminalHeight = r.terminalHeight || 24
+        const availableHeight = terminalHeight - labelHeight - padding
+        const maxVisibleItemsByHeight = Math.max(1, Math.floor(availableHeight / linesPerItem))
+        const desiredVisibleItems = Math.min(choices.length, 10, maxVisibleItemsByHeight)
+        const selectHeight = desiredVisibleItems * linesPerItem
+
         const label = new TextRenderable(r, { height: 1, content: `  ${message}` })
         const sel = new SelectRenderable(r, {
             options: selectOptions,
             selectedIndex: defaultIdx >= 0 ? defaultIdx : 0,
             width: r.width,
-            height: Math.min(choices.length, 10),
+            height: selectHeight,
             showDescription,
             wrapSelection,
         })
 
         r.root.add(label)
         r.root.add(sel)
-        r.footerHeight = 1 + Math.min(choices.length, 10)
+        r.footerHeight = 1 + selectHeight
         sel.focus()
         r.requestRender()
 
