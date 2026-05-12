@@ -104,9 +104,8 @@ export const clearFooter = (r: CliRenderer): void => {
 
     // Blur any focused renderable before clearing children so the native
     // renderer does not leave a dangling cursor or focus state.
-    if (r.currentFocusedRenderable) {
-        r.currentFocusedRenderable.blur()
-    }
+    const focused = r.currentFocusedRenderable
+    if (focused) focused.blur()
 
     const children = [...r.root.getChildren()]
     for (const child of children) {

@@ -50,8 +50,12 @@ export const createRichProgress = async (): Promise<RichProgress> => {
 
         // Recreate the framebuffer when dimensions change (details grow/shrink).
         if (fb.width !== termWidth || fb.height !== totalHeight) {
-            r.root.remove(fb.id)
-            fb.destroyRecursively()
+            try {
+                r.root.remove(fb.id)
+                fb.destroyRecursively()
+            } catch {
+                // Ignore removal errors (e.g., already destroyed)
+            }
             fb = new FrameBufferRenderable(r, {
                 width: termWidth,
                 height: totalHeight,

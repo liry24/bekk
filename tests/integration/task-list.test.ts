@@ -52,7 +52,7 @@ describe('TaskList (mocked)', () => {
         expect(tasks[0]!.detail).toBe('new')
     })
 
-    it('BUG: find is O(n) - should use Map for large task lists', () => {
+    it('uses Map for O(1) task lookups', () => {
         const tasks = Array.from({ length: 100 }, (_, i) => ({
             id: `t${i}`,
             label: `task ${i}`,

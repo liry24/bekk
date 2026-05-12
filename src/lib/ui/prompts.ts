@@ -292,6 +292,8 @@ export const multiselect = async <T = string>(options: MultiselectOptions<T>): P
     const r = await getRenderer()
     const { message, choices, default: defaultValue } = options
 
+    if (choices.length === 0) return []
+
     return new Promise<T[]>((resolve, reject) => {
         let settled = false
         const selected = new Set<number>(

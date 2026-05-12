@@ -19,13 +19,27 @@ export const wrapLines = (text: string, maxWidth: number): string[] => {
         }
         let current = ''
         let currentVisible = 0
+        let inEscape = false
+        let activeEscapes = ''
         for (const char of line) {
-            const charVisible = char.charCodeAt(0) === 0x1b ? 0 : 1
-            const nextVisible = currentVisible + (charVisible || stripAnsi(char).length)
+            if (char.charCodeAt(0) === 0x1b) {
+                inEscape = true
+                activeEscapes = char
+                current += char
+                continue
+            }
+            if (inEscape) {
+                activeEscapes += char
+                current += char
+                if ((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z')) inEscape = false
+
+                continue
+            }
+            const nextVisible = currentVisible + 1
             if (nextVisible > maxWidth && currentVisible > 0) {
                 lines.push(current)
-                current = char
-                currentVisible = charVisible || stripAnsi(char).length
+                current = activeEscapes + char
+                currentVisible = 1
             } else {
                 current += char
                 currentVisible = nextVisible

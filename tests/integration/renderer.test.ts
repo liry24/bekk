@@ -52,7 +52,7 @@ describe('Renderer (mocked)', () => {
         expect(mockR.footerHeight).toBe(5)
     })
 
-    it('BUG: clearFooter does not check if focused renderable is already destroyed', () => {
+    it('clearFooter safely handles focused renderable', () => {
         const focused = {
             id: 'focused',
             destroyRecursively: () => {},

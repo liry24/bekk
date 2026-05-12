@@ -39,7 +39,8 @@ export interface TaskListInstance {
 
 export const createTaskList = async (): Promise<TaskListInstance> => {
     const r = await getRenderer()
-    const tasks: Task[] = []
+    const taskMap = new Map<string, Task>()
+    const tasksOrder: string[] = []
     const spinner = getRandomSpinner()
     let frameIdx = 0
     let finished = false
@@ -75,13 +76,14 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
     // and text to appear truncated.
 
     const redraw = () => {
-        if (!text || tasks.length === 0) return
-        text.height = tasks.length
-        r.footerHeight = tasks.length + getExtraFooterHeight()
+        if (!text || tasksOrder.length === 0) return
+        text.height = tasksOrder.length
+        r.footerHeight = tasksOrder.length + getExtraFooterHeight()
         const allChunks: TextChunk[] = []
-        for (let i = 0; i < tasks.length; i++) {
+        for (let i = 0; i < tasksOrder.length; i++) {
             if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
-            allChunks.push(...formatTaskStyled(tasks[i]!).chunks)
+            const task = taskMap.get(tasksOrder[i]!)!
+            allChunks.push(...formatTaskStyled(task).chunks)
         }
         text.content = new StyledText(allChunks)
         r.requestRender()
@@ -95,8 +97,9 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
 
     return {
         add(label: string, detail?: string): string {
-            const id = `task_${tasks.length}_${Date.now()}`
-            tasks.push({ id, label, state: 'pending', detail })
+            const id = `task_${tasksOrder.length}_${Date.now()}`
+            taskMap.set(id, { id, label, state: 'pending', detail })
+            tasksOrder.push(id)
 
             // Lazy-init: create the TextRenderable and start live mode on the
             // first add() call so there is never a blank footer line when the
@@ -114,7 +117,7 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
         },
 
         update(id: string, state: TaskState, detail?: string): void {
-            const task = tasks.find((t) => t.id === id)
+            const task = taskMap.get(id)
             if (!task) return
             task.state = state
             if (detail !== undefined) task.detail = detail
@@ -122,7 +125,7 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
         },
 
         setDetail(id: string, detail: string): void {
-            const task = tasks.find((t) => t.id === id)
+            const task = taskMap.get(id)
             if (!task) return
             task.detail = detail
             redraw()
@@ -142,7 +145,8 @@ export const createTaskList = async (): Promise<TaskListInstance> => {
             // main scrollback area.  writeToScrollback places items starting
             // just above the new footer, which fills the formerly-blank rows.
             clearFooter(r)
-            for (const task of tasks) {
+            for (const id of tasksOrder) {
+                const task = taskMap.get(id)!
                 writeScrollback(formatTaskStyled(task))
             }
         },

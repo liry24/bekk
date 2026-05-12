@@ -61,7 +61,7 @@ describe('Progress (mocked)', () => {
         expect(title).toBe('')
     })
 
-    it('BUG: framebuffer recreation does not handle remove failure', () => {
+    it('framebuffer recreation handles remove failure gracefully', () => {
         const children = [{ id: 'fb1' }]
         const remove = (id: string) => {
             const idx = children.findIndex((c) => c.id === id)

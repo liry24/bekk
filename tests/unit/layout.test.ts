@@ -76,7 +76,7 @@ describe('wrapLines', () => {
         expect(wrapLines('abcde', 5)).toEqual(['abcde'])
     })
 
-    it('BUG: does not correctly track ANSI state across wraps', () => {
+    it('correctly tracks ANSI state across wraps', () => {
         const input = '\x1b[32mhello world\x1b[0m'
         const result = wrapLines(input, 5)
         const stripped = result.map(stripAnsi).join('')
