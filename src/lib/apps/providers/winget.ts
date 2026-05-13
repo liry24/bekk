@@ -25,15 +25,16 @@ const listWinget = async (includeSources: string[]) => {
     const tmpFile = `${process.env.TEMP ?? 'C:\\\\Windows\\\\Temp'}\\bekk-winget-export-${randomUUID()}.json`
 
     try {
+        const safeTmpFile = tmpFile.replace(/'/g, "''")
         const exportResult = Bun.spawnSync(
             [
-                'winget',
-                'export',
-                '-o',
-                tmpFile,
-                '--include-versions',
-                '--accept-source-agreements',
-                '--disable-interactivity',
+                'powershell.exe',
+                '-NoProfile',
+                '-NonInteractive',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-Command',
+                `& 'winget' 'export' '-o' '${safeTmpFile}' '--include-versions' '--accept-source-agreements' '--disable-interactivity'`,
             ],
             { stderr: 'ignore' },
         )
