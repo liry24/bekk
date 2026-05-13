@@ -43,6 +43,7 @@
         "fmt:check": "oxfmt --check",
         "test": "bun test",
         "test:watch": "bun test --watch",
+        "test:core": "bun run build:core && bun test tests/integration/bekk-core.test.ts",
         "bump:hook": "cargo update bekk-core --manifest-path bekk-core/Cargo.toml"
     },
     "dependencies": {
