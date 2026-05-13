@@ -51,7 +51,7 @@
         "@crustjs/plugins": "0.0.22",
         "@crustjs/store": "0.0.4",
         "@crustjs/validate": "0.0.15",
-        "@opentui/core": "^0.2.6",
+        "@opentui/core": "^0.2.8",
         "cli-spinners": "^3.4.0",
         "consola": "^3.4.2",
         "destr": "^2.0.5",
