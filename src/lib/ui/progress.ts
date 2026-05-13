@@ -2,14 +2,14 @@
 
 import { FrameBufferRenderable, RGBA } from '@opentui/core'
 
-import { stripAnsi } from './layout'
+import { ansiToStyledText, stripAnsi } from './layout'
 import {
     clearFooter,
     ensureHintIsLast,
     getExtraFooterHeight,
     getRenderer,
     setFooterHeight,
-    writeString,
+    writeScrollback,
 } from './renderer'
 import { getRandomSpinner } from './spinner'
 
@@ -17,7 +17,7 @@ import { getRandomSpinner } from './spinner'
 const MARGIN = 2
 
 // FrameBuffer colour constants (RGBA — reusable, as recommended by the guide).
-const BG = RGBA.fromHex('#000000')
+const BG = RGBA.defaultBackground()
 const TEXT = RGBA.fromHex('#FFFFFF')
 const DIM = RGBA.fromHex('#888888')
 const BAR_FILL = RGBA.fromHex('#00FF00')
@@ -166,7 +166,7 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             r.removeFrameCallback(frameCallback)
             r.dropLive()
             clearFooter(r)
-            if (opts?.title) writeString(opts.title)
+            if (opts?.title) writeScrollback(ansiToStyledText(opts.title))
         },
     }
 }
