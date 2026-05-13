@@ -1,2 +1,2 @@
-export type { ScheduleConfig, ScheduleType, Scheduler } from './types'
+export type { ScheduleConfig, ScheduleType, ScheduleEntry, Scheduler } from './types'
 export { getScheduler } from './platform'

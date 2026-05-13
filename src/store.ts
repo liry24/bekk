@@ -34,7 +34,7 @@ export const configStore = createStore({
         },
         scheduleConfigJson: {
             type: 'string',
-            default: '{}',
+            default: '[]',
             validate: fieldSync(z.string()),
         },
         gistEnabled: {
