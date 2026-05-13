@@ -14,10 +14,24 @@ let _hintLine: TextRenderable | null = null
 let _extraFooterHeight = 0
 let _hintTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Set the footer height. OpenTUI (capture-stdout mode) manages its own
- *  scroll transitions internally; manual pre-scrolling is not needed. */
+/** Set the footer height.
+ *  When the footer grows, pre-scrolls the scrollback region by exactly the
+ *  number of new lines needed so existing content is pushed into scrollback
+ *  rather than overwritten by the expanding footer. */
 export const setFooterHeight = (r: CliRenderer, height: number): void => {
-    r.footerHeight = Math.max(1, height)
+    const newHeight = Math.max(1, height)
+    const delta = newHeight - r.footerHeight
+    if (delta > 0) {
+        // Move the cursor to the last row of the current scrollback region,
+        // then emit `delta` newlines to scroll content up by exactly that many
+        // lines before OpenTUI extends the footer area.
+        const lastScrollbackRow = (r.terminalHeight || 24) - r.footerHeight
+        const prev = r.externalOutputMode
+        r.externalOutputMode = 'passthrough'
+        process.stdout.write(`\x1b[${lastScrollbackRow};1H` + '\n'.repeat(delta))
+        r.externalOutputMode = prev
+    }
+    r.footerHeight = newHeight
 }
 
 export const getExtraFooterHeight = (): number => _extraFooterHeight
