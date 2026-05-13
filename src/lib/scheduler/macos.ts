@@ -11,10 +11,10 @@ const FALLBACK_MACOS_UID = 501
 /**
  * Escape text for XML plist <string> elements.
  */
-const escapeXml = (text: string): string =>
+export const escapeXml = (text: string): string =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-const buildPlist = (program: string, args: string[], config: ScheduleConfig): string => {
+export const buildPlist = (program: string, args: string[], config: ScheduleConfig): string => {
     let intervalXml = ''
     if (config.type === 'interval') {
         intervalXml = `    <key>StartInterval</key>\n    <integer>${config.interval! * 60}</integer>`

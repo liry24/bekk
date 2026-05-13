@@ -13,7 +13,7 @@ const exec = (args: string[]) => {
 /**
  * Escape an argument for Windows command-line parsing (CommandLineToArgvW rules).
  */
-const escapeWindowsArg = (arg: string): string => {
+export const escapeWindowsArg = (arg: string): string => {
     if (!/[ \t\n\r"\\]/.test(arg)) return arg
     let escaped = '"'
     for (let i = 0; i < arg.length; i++) {
@@ -36,7 +36,7 @@ const escapeWindowsArg = (arg: string): string => {
     return escaped
 }
 
-const buildTriggerArgs = (config: ScheduleConfig): string[] => {
+export const buildTriggerArgs = (config: ScheduleConfig): string[] => {
     switch (config.type) {
         case 'daily':
             return ['/sc', 'daily', '/st', config.time!]

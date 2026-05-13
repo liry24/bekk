@@ -12,12 +12,12 @@ const TIMER_PATH = join(SERVICE_DIR, `${LABEL}.timer`)
 /**
  * Escape an argument for systemd ExecStart= lines.
  */
-const escapeSystemdArg = (arg: string): string => {
+export const escapeSystemdArg = (arg: string): string => {
     if (!/[ \t\n\r"\\$`]/.test(arg)) return arg
     return '"' + arg.replace(/(["\\$`])/g, '\\$1') + '"'
 }
 
-const buildService = (program: string, args: string[]) =>
+export const buildService = (program: string, args: string[]) =>
     `[Unit]
 Description=bekk scheduled backup
 
@@ -29,7 +29,7 @@ ExecStart=${escapeSystemdArg(program)} ${args.map(escapeSystemdArg).join(' ')}
 WantedBy=default.target
 `
 
-const buildTimer = (config: ScheduleConfig) => {
+export const buildTimer = (config: ScheduleConfig) => {
     if (config.type === 'interval') {
         return `[Unit]
 Description=bekk backup timer

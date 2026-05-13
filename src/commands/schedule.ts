@@ -13,7 +13,7 @@ import { configStore } from '../store'
 
 const TASK_LABEL_PREFIX = 'bekk-backup'
 
-const nextTaskLabel = (entries: ScheduleEntry[]): string => {
+export const nextTaskLabel = (entries: ScheduleEntry[]): string => {
     if (entries.length === 0) return `${TASK_LABEL_PREFIX}-0`
     const indices = entries.map((e) => {
         const m = e.label.match(/-(\d+)$/)
@@ -22,26 +22,27 @@ const nextTaskLabel = (entries: ScheduleEntry[]): string => {
     return `${TASK_LABEL_PREFIX}-${Math.max(...indices) + 1}`
 }
 
-const validateTime = (time: string): string | true => {
+export const validateTime = (time: string): string | true => {
     if (!/^\d{1,2}:\d{2}$/.test(time)) return `Invalid time format. Expected HH:MM`
     const [h, m] = time.split(':').map(Number)
     if (h! < 0 || h! > 23 || m! < 0 || m! > 59) return `Invalid time: ${time}`
     return true
 }
 
-const validateDayOfWeek = (day: string): string | true => {
+export const validateDayOfWeek = (day: string): string | true => {
     const valid = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
     if (!valid.includes(day.toLowerCase())) return `Invalid day of week: ${day}. Expected mon-sun`
     return true
 }
 
-const validateDayOfMonth = (day: string): string | true => {
+export const validateDayOfMonth = (day: string): string | true => {
     const d = Number(day)
-    if (isNaN(d) || d < 1 || d > 31) return `Invalid day of month. Expected 1-31`
+    if (isNaN(d) || !Number.isInteger(d) || d < 1 || d > 31)
+        return `Invalid day of month. Expected 1-31`
     return true
 }
 
-const validateInterval = (val: string): string | true => {
+export const validateInterval = (val: string): string | true => {
     const n = Number(val)
     if (isNaN(n) || !Number.isInteger(n) || n < 1)
         return `Invalid interval. Expected a positive integer (minutes)`
@@ -56,7 +57,7 @@ const getProgramAndArgs = (): { program: string; args: string[] } => {
     return { program: process.execPath, args: ['backup'] }
 }
 
-const formatSchedule = (config: ScheduleConfig): string => {
+export const formatSchedule = (config: ScheduleConfig): string => {
     switch (config.type) {
         case 'daily':
             return `Daily at ${config.time}`
@@ -69,7 +70,7 @@ const formatSchedule = (config: ScheduleConfig): string => {
     }
 }
 
-const buildScheduleInfoOpts = (config: ScheduleConfig) => {
+export const buildScheduleInfoOpts = (config: ScheduleConfig) => {
     if (config.type === 'daily') return { daily: config.time }
     if (config.type === 'weekly') return { weekly: [config.day!, config.time!] as [string, string] }
     if (config.type === 'monthly')
@@ -79,27 +80,40 @@ const buildScheduleInfoOpts = (config: ScheduleConfig) => {
 
 // ─── Store helpers (array-based) ──────────────────────────────────────────────
 
-const readScheduleEntries = async (): Promise<ScheduleEntry[]> => {
-    const cfg = await configStore.read()
-    const raw = cfg.scheduleConfigJson
+/**
+ * Parse a raw JSON string from the store into ScheduleEntry[].
+ * Handles legacy single-object migration (old { type: '...' } format).
+ * Exported for unit testing (store-free).
+ */
+export const parseScheduleEntries = (raw: string): ScheduleEntry[] => {
     if (!raw || raw === '{}' || raw === '[]') return []
     try {
         const parsed: unknown = JSON.parse(raw)
-        // Migrate legacy single-object format { type: '...' }
-        if (Array.isArray(parsed)) {
-            return parsed as ScheduleEntry[]
-        }
+        if (Array.isArray(parsed)) return parsed as ScheduleEntry[]
         if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
-            const migrated: ScheduleEntry[] = [
-                { label: `${TASK_LABEL_PREFIX}-0`, config: parsed as ScheduleConfig },
-            ]
-            await configStore.patch({ scheduleConfigJson: JSON.stringify(migrated) })
-            return migrated
+            return [{ label: `${TASK_LABEL_PREFIX}-0`, config: parsed as ScheduleConfig }]
         }
         return []
     } catch {
         return []
     }
+}
+
+const readScheduleEntries = async (): Promise<ScheduleEntry[]> => {
+    const cfg = await configStore.read()
+    const raw = cfg.scheduleConfigJson
+    const entries = parseScheduleEntries(raw)
+    // Persist migration if a legacy entry was detected
+    if (
+        raw &&
+        raw !== '{}' &&
+        raw !== '[]' &&
+        entries.length > 0 &&
+        !raw.trimStart().startsWith('[')
+    ) {
+        await configStore.patch({ scheduleConfigJson: JSON.stringify(entries) })
+    }
+    return entries
 }
 
 const saveScheduleEntries = async (entries: ScheduleEntry[]): Promise<void> => {
