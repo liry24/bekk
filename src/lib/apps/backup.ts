@@ -6,8 +6,7 @@ import { getAvailableProviders } from './registry'
 
 export const formatAppListSummary = (result: Record<string, App[] | null>, sep = ', ') =>
     Object.entries(result)
-        .filter(([, apps]) => apps !== null)
-        .map(([id, apps]) => `${id}: ${apps!.length}`)
+        .map(([id, apps]) => (apps !== null ? `${id}: ${apps.length}` : `${id}: (error)`))
         .join(sep)
 
 export const backupAllApps = async (

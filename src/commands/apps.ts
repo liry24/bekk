@@ -51,7 +51,13 @@ const appsListCmd = app
         }
 
         for (const provider of providers) {
-            const apps = await provider.list()
+            let apps
+            try {
+                apps = await provider.list()
+            } catch {
+                writeString(dim(`${provider.name}: failed to retrieve app list`))
+                continue
+            }
             if (apps === null || apps.length === 0) {
                 writeString(dim(`${provider.name}: (no apps found)`))
                 continue
