@@ -8,6 +8,7 @@ import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
 import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import {
+    ansiToStyledText,
     bold,
     dim,
     green,
@@ -15,6 +16,7 @@ import {
     createRichProgress,
     createTaskList,
     drawPanel,
+    writeScrollback,
     writeString,
 } from '#lib/ui'
 import { getSuccessIcon } from '#lib/ui/spinner'
@@ -135,10 +137,10 @@ export const backupCmd = app
                         ),
                     )
                     snapshotId = data.snapshot_id
-                    progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
+                    await progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
                 })
             } catch (err) {
-                progress.finish({ title: `  ${red('✖')} Backing up...` })
+                await progress.finish({ title: `  ${red('✖')} Backing up...` })
                 writeString(red('Backup failed:') + ' ' + formatError(err))
                 return
             }
@@ -182,7 +184,7 @@ export const backupCmd = app
                 `${bold('Sources:')}  ${sources.length} path(s)`,
             ]
             if (appSummary) summaryLines.push(`${bold('Apps:')}     ${appSummary}`)
-            writeString('')
+            writeScrollback(ansiToStyledText(''))
             await drawPanel(summaryLines, {
                 title: flags['dry-run'] ? 'Dry Run Complete' : 'Backup Complete',
             })

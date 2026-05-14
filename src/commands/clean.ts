@@ -3,7 +3,19 @@ import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { bold, dim, red, yellow, confirm, createTaskList, drawPanel, writeString } from '#lib/ui'
+import {
+    ansiToStyledText,
+    bold,
+    confirm,
+    createTaskList,
+    dim,
+    drawPanel,
+    getRenderer,
+    red,
+    writeScrollback,
+    writeString,
+    yellow,
+} from '#lib/ui'
 
 import { app } from '../app'
 
@@ -40,7 +52,9 @@ export const cleanCmd = app
                 instantDelete = confirmed
             }
 
-            writeString(dim('Cleaning repository...'))
+            const r = await getRenderer()
+            writeScrollback(ansiToStyledText(dim('Cleaning repository...')))
+            await r.idle()
             const taskList = await createTaskList()
             const pruneTask = taskList.add('Prune orphaned data')
             const checkTask = taskList.add('Check repository')

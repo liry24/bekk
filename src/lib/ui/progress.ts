@@ -25,7 +25,7 @@ const BAR_EMPTY = RGBA.fromHex('#333333')
 
 export interface RichProgress {
     update(options: { title?: string; bar?: number; details?: string[] }): void
-    finish(options?: { title?: string }): void
+    finish(options?: { title?: string }): Promise<void>
 }
 
 export const createRichProgress = async (): Promise<RichProgress> => {
@@ -160,13 +160,26 @@ export const createRichProgress = async (): Promise<RichProgress> => {
             refresh()
         },
 
-        finish(opts?: { title?: string }): void {
+        async finish(opts?: { title?: string }): Promise<void> {
             if (finished) return
             finished = true
             r.removeFrameCallback(frameCallback)
             r.dropLive()
             clearFooter(r)
+            // Write enough scrollback items to cover all former footer rows.
+            // Blank lines are written first to overwrite FrameBuffer pixel
+            // artifacts and advance the scrollback tail. The title is written
+            // last so it appears closest to the footer (most visible).
+            const blankCount = maxTotalHeight - (opts?.title ? 1 : 0)
+            for (let i = 0; i < blankCount; i++) {
+                writeScrollback(ansiToStyledText(''))
+            }
             if (opts?.title) writeScrollback(ansiToStyledText(opts.title))
+            // Wait for all queued scrollback commits to be flushed to the
+            // physical terminal before returning. This ensures any subsequent
+            // live UI session (e.g. task list) starts with a clean slate and
+            // the progress title appears above its output in the correct order.
+            await r.idle()
         },
     }
 }
