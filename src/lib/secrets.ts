@@ -18,10 +18,15 @@ const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 
 export const generatePassword = (length = 32) => {
     const charsLength = PASSWORD_CHARS.length
-    const bytes = crypto.getRandomValues(new Uint8Array(length))
+    // Use rejection sampling to avoid modulo bias.
+    // The largest multiple of charsLength that fits in a byte (0–255).
+    const limit = 256 - (256 % charsLength)
     let result = ''
-    for (let i = 0; i < length; i++) {
-        result += PASSWORD_CHARS.charAt(bytes[i]! % charsLength)
+    while (result.length < length) {
+        const bytes = crypto.getRandomValues(new Uint8Array((length - result.length) * 2))
+        for (let i = 0; i < bytes.length && result.length < length; i++) {
+            if (bytes[i]! < limit) result += PASSWORD_CHARS.charAt(bytes[i]! % charsLength)
+        }
     }
     return result
 }
