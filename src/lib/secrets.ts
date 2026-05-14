@@ -1,8 +1,7 @@
-import { select } from '@crustjs/prompts'
-import type { password as passwordPrompt } from '@crustjs/prompts'
-
 import { bekkCore } from '#bekk-core'
 import { unwrapCoreResult } from '#lib/core-helpers'
+import { select } from '#lib/ui'
+import type { PasswordOptions } from '#lib/ui'
 
 import { configStore } from '../store'
 
@@ -15,28 +14,28 @@ import { configStore } from '../store'
 const SERVICE = 'bekk'
 const REPO_PASSWORD_KEY = 'repo-password'
 
-const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*-_=+'
+const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_=+'
 
 export const generatePassword = (length = 32) => {
     const charsLength = PASSWORD_CHARS.length
-    const maxValid = 256 - (256 % charsLength)
-    const result: string[] = []
+    // Use rejection sampling to avoid modulo bias.
+    // The largest multiple of charsLength that fits in a byte (0–255).
+    const limit = 256 - (256 % charsLength)
+    let result = ''
     while (result.length < length) {
-        const byte = new Uint8Array(1)
-        crypto.getRandomValues(byte)
-        const b = byte[0]!
-        if (b < maxValid) {
-            result.push(PASSWORD_CHARS.charAt(b % charsLength))
+        const bytes = crypto.getRandomValues(new Uint8Array((length - result.length) * 2))
+        for (let i = 0; i < bytes.length && result.length < length; i++) {
+            if (bytes[i]! < limit) result += PASSWORD_CHARS.charAt(bytes[i]! % charsLength)
         }
     }
-    return result.join('')
+    return result
 }
 
 /**
  * Prompt for a backup password. Returns auto-generated password if user leaves it blank.
  */
 export const promptPassword = async (
-    password: typeof passwordPrompt,
+    password: (options: PasswordOptions) => Promise<string>,
 ): Promise<{ password: string; wasGenerated: boolean }> => {
     const entered = await password({
         message: 'Backup password  (press Enter to auto-generate)',
@@ -109,3 +108,19 @@ export const setS3SecretAccessKey = async (destinationName: string, value: strin
 
 export const deleteS3SecretAccessKey = async (destinationName: string) =>
     Bun.secrets.delete({ service: S3_SERVICE, name: destinationName })
+
+// ─── GitHub Token ─────────────────────────────────────────────────────────────
+
+const GITHUB_SERVICE = 'bekk-github'
+const GITHUB_TOKEN_KEY = 'token'
+
+export const getGitHubToken = async (): Promise<string | undefined> => {
+    const value = await Bun.secrets.get({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY })
+    return value ?? undefined
+}
+
+export const setGitHubToken = async (value: string) =>
+    Bun.secrets.set({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY, value })
+
+export const deleteGitHubToken = async () =>
+    Bun.secrets.delete({ service: GITHUB_SERVICE, name: GITHUB_TOKEN_KEY })

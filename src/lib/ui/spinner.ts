@@ -1,18 +1,38 @@
-import { green, red } from '@crustjs/style'
-import spinners from 'cli-spinners'
+// ─── spinner.ts ─── Spinner frame definitions ────────────────────────────────
 
-const names = Object.keys(spinners).filter((name) => name.startsWith('dots'))
+import cliSpinners, { type Spinner } from 'cli-spinners'
 
-type CliSpinner = (typeof spinners)[keyof typeof spinners]
+import { green, red } from './style'
 
-let cachedSpinner: CliSpinner | null = null
+export type SpinnerDef = Spinner
 
-export const getRandomSpinner = (): CliSpinner => {
+const DOTS_SPINNERS: SpinnerDef[] = [
+    cliSpinners.dots,
+    cliSpinners.dots2,
+    cliSpinners.dots3,
+    cliSpinners.dots4,
+    cliSpinners.dots5,
+    cliSpinners.dots6,
+    cliSpinners.dots7,
+    cliSpinners.dots8,
+    cliSpinners.dots9,
+    cliSpinners.dots10,
+    cliSpinners.dots11,
+    cliSpinners.dots12,
+    cliSpinners.dots13,
+    cliSpinners.dots14,
+    cliSpinners.dots8Bit,
+    cliSpinners.simpleDots,
+    cliSpinners.simpleDotsScrolling,
+]
+
+let cachedSpinner: SpinnerDef | null = null
+
+export const getRandomSpinner = (): SpinnerDef => {
     if (cachedSpinner) return cachedSpinner
-    const name = names[Math.floor(Math.random() * names.length)]!
-    cachedSpinner = spinners[name as keyof typeof spinners]
+    cachedSpinner = DOTS_SPINNERS[Math.floor(Math.random() * DOTS_SPINNERS.length)]!
     return cachedSpinner
 }
 
-export const getSuccessIcon = () => green('✔')
-export const getErrorIcon = () => red('✖')
+export const getSuccessIcon = (): string => green('✔')
+export const getErrorIcon = (): string => red('✖')

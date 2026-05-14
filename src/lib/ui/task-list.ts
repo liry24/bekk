@@ -1,6 +1,25 @@
-// ─── task-list.ts ─── タスクリスト（リアルタイム更新） ─────────────────────
+// ─── task-list.ts ─── Live-updating task list (OpenTUI footer) ───────────────
 
-import { dim, green, red, yellow } from '@crustjs/style'
+import {
+    StyledText,
+    TextRenderable,
+    t as styledT,
+    dim as otuiDim,
+    green as otuiGreen,
+    red as otuiRed,
+    yellow as otuiYellow,
+    type TextChunk,
+} from '@opentui/core'
+
+import {
+    clearFooter,
+    ensureHintIsLast,
+    getExtraFooterHeight,
+    getRenderer,
+    setFooterHeight,
+    writeScrollback,
+} from './renderer'
+import { getRandomSpinner } from './spinner'
 
 export type TaskState = 'pending' | 'running' | 'success' | 'error'
 
@@ -11,19 +30,6 @@ interface Task {
     detail?: string
 }
 
-const formatIcon = (state: TaskState): string => {
-    switch (state) {
-        case 'pending':
-            return dim('○')
-        case 'running':
-            return yellow('◐')
-        case 'success':
-            return green('◉')
-        case 'error':
-            return red('✕')
-    }
-}
-
 export interface TaskListInstance {
     add: (label: string, detail?: string) => string
     update: (id: string, state: TaskState, detail?: string) => void
@@ -32,82 +38,136 @@ export interface TaskListInstance {
     finish: () => void
 }
 
-export const createTaskList = (): TaskListInstance => {
-    const tasks: Task[] = []
-    let renderedLines = 0
+export const createTaskList = async (): Promise<TaskListInstance> => {
+    const r = await getRenderer()
+    const taskMap = new Map<string, Task>()
+    const tasksOrder: string[] = []
+    const spinner = getRandomSpinner()
+    let frameIdx = 0
+    let finished = false
+    // Lazily created on first add() to avoid a blank footer line before any tasks exist.
+    let text: TextRenderable | null = null
+    // Track the maximum number of tasks ever added so the footer never
+    // shrinks during live updates (which would leave ghost text on screen).
+    let maxTasks = 0
 
-    const formatTask = (t: Task): string => {
-        const icon = formatIcon(t.state)
-        const prefix = `${icon} ${t.label}`
-        if (t.detail) {
-            return `${prefix}\n    ${dim(t.detail)}`
+    // ─── Icon / row builders ─────────────────────────────────────────────────
+    // These live inside the closure so formatIconChunk can read the current frameIdx.
+
+    const formatIconChunk = (state: TaskState): TextChunk => {
+        switch (state) {
+            case 'pending':
+                return otuiDim('○')
+            case 'running':
+                return otuiYellow(spinner.frames[frameIdx % spinner.frames.length]!)
+            case 'success':
+                return otuiGreen('✔')
+            case 'error':
+                return otuiRed('✖')
         }
-        return prefix
     }
 
-    const redraw = (lines: string[]): void => {
-        if (renderedLines > 0) {
-            process.stdout.write(`\x1b[${renderedLines}A`)
-        }
+    const formatTaskStyled = (task: Task): StyledText => {
+        const icon = formatIconChunk(task.state)
+        if (task.detail) return styledT`  ${icon} ${task.label}  ${otuiDim(task.detail)}`
+        return styledT`  ${icon} ${task.label}`
+    }
 
-        let totalLines = 0
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]
-            if (!line) continue
-            const subLines = line.split('\n')
-            for (let j = 0; j < subLines.length; j++) {
-                const sub = subLines[j]
-                if (sub === undefined) continue
-                if (totalLines > 0) process.stdout.write('\n')
-                process.stdout.write('\x1b[2K\x1b[0G')
-                process.stdout.write(sub)
-                totalLines++
+    // ─── Redraw ──────────────────────────────────────────────────────────────
+    // Build a native StyledText so OpenTUI's pixel pipeline sees real glyph
+    // widths. Passing an ANSI string would go through stringToStyledText which
+    // treats escape bytes as literal characters, causing icons to be invisible
+    // and text to appear truncated.
+
+    const redraw = () => {
+        if (!text || tasksOrder.length === 0) return
+        if (tasksOrder.length > maxTasks) maxTasks = tasksOrder.length
+        text.height = maxTasks
+        setFooterHeight(r, maxTasks + getExtraFooterHeight())
+        const termWidth = r.width
+        const allChunks: TextChunk[] = []
+        for (let i = 0; i < tasksOrder.length; i++) {
+            if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
+            const task = taskMap.get(tasksOrder[i]!)!
+            const taskStyled = formatTaskStyled(task)
+            allChunks.push(...taskStyled.chunks)
+            // Pad the line with spaces to the terminal width so that
+            // previously drawn characters on this row are overwritten.
+            const visibleLen = taskStyled.chunks.reduce((s, c) => s + c.text.length, 0)
+            if (visibleLen < termWidth) {
+                allChunks.push(styledT`${' '.repeat(termWidth - visibleLen)}`.chunks[0]!)
             }
         }
-
-        if (renderedLines > totalLines) {
-            for (let i = totalLines; i < renderedLines; i++) {
-                process.stdout.write('\n')
-                process.stdout.write('\x1b[2K\x1b[0G')
-            }
-            process.stdout.write(`\x1b[${renderedLines - totalLines}A`)
+        // Fill remaining rows (if maxTasks > current tasks) with blank
+        // lines padded to terminal width to clear any ghost text.
+        for (let i = tasksOrder.length; i < maxTasks; i++) {
+            if (i > 0) allChunks.push(styledT`\n`.chunks[0]!)
+            allChunks.push(styledT`${' '.repeat(termWidth)}`.chunks[0]!)
         }
+        text.content = new StyledText(allChunks)
+        r.requestRender()
+    }
 
-        process.stdout.write('\n')
-        renderedLines = totalLines
+    // Frame callback: advances the spinner animation and redraws the footer.
+    const frameCallback = async (_dt: number) => {
+        frameIdx++
+        redraw()
     }
 
     return {
         add(label: string, detail?: string): string {
-            const id = `task_${tasks.length}_${Date.now()}`
-            tasks.push({ id, label, state: 'pending', detail })
-            this.render()
+            const id = `task_${tasksOrder.length}_${Date.now()}`
+            taskMap.set(id, { id, label, state: 'pending', detail })
+            tasksOrder.push(id)
+
+            // Lazy-init: create the TextRenderable and start live mode on the
+            // first add() call so there is never a blank footer line when the
+            // task list is created but no tasks have been added yet.
+            if (!text) {
+                text = new TextRenderable(r, { height: 1, content: '' })
+                r.root.add(text)
+                ensureHintIsLast(r)
+                r.requestLive()
+                r.setFrameCallback(frameCallback)
+            }
+
+            redraw()
             return id
         },
 
         update(id: string, state: TaskState, detail?: string): void {
-            const task = tasks.find((t) => t.id === id)
+            const task = taskMap.get(id)
             if (!task) return
             task.state = state
             if (detail !== undefined) task.detail = detail
-            this.render()
+            redraw()
         },
 
         setDetail(id: string, detail: string): void {
-            const task = tasks.find((t) => t.id === id)
+            const task = taskMap.get(id)
             if (!task) return
             task.detail = detail
-            this.render()
+            redraw()
         },
 
         render(): void {
-            const lines = tasks.map((t) => formatTask(t))
-            redraw(lines)
+            redraw()
         },
 
         finish(): void {
-            this.render()
-            renderedLines = 0
+            if (finished) return
+            finished = true
+            // Stop the spinner animation before committing final state.
+            r.removeFrameCallback(frameCallback)
+            r.dropLive()
+            // Shrink the footer first so the old footer rows become part of the
+            // main scrollback area.  writeToScrollback places items starting
+            // just above the new footer, which fills the formerly-blank rows.
+            clearFooter(r)
+            for (const id of tasksOrder) {
+                const task = taskMap.get(id)!
+                writeScrollback(formatTaskStyled(task))
+            }
         },
     }
 }

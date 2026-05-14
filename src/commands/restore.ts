@@ -1,15 +1,21 @@
-import { spinner } from '@crustjs/progress'
-import { input } from '@crustjs/prompts'
-import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
+import { isAbsolute } from 'pathe'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
+import { bold, dim, green, red, input, spinner, writeString } from '#lib/ui'
 
 import { app } from '../app'
+
+const validateTargetPath = (value: string): true | string => {
+    const trimmed = value.trim()
+    if (!trimmed) return 'Target path is required'
+    if (trimmed.includes('\0')) return 'Path cannot contain null bytes'
+    if (!isAbsolute(trimmed)) return 'Path must be absolute'
+    return true
+}
 
 export const restoreCmd = app
     .sub('restore')
@@ -31,11 +37,15 @@ export const restoreCmd = app
         commandValidator(async ({ flags }) => {
             try {
                 await withRepoAuth(async (cfg, password) => {
+                    if (flags.target) {
+                        const validation = validateTargetPath(flags.target)
+                        if (validation !== true) throw new Error(validation)
+                    }
                     const target =
                         flags.target ??
                         (await input({
                             message: 'Restore target path',
-                            validate: (v) => (v.trim() ? true : 'Target path is required'),
+                            validate: validateTargetPath,
                         }))
 
                     const snapshotLabel =
@@ -61,19 +71,19 @@ export const restoreCmd = app
                     })
 
                     if (flags['dry-run']) {
-                        consola.success(green('[dry run] Restore simulation complete.'))
+                        writeString(green('[dry run] Restore simulation complete.'))
                     } else {
-                        consola.success(green(bold('Restore complete')) + `  → ${dim(target)}`)
+                        writeString(green(bold('Restore complete')) + `  → ${dim(target)}`)
                     }
                 })
             } catch (err) {
-                const message = fmtErr(err)
+                const message = formatError(err)
                 if (/No snapshots found/i.test(message)) {
-                    consola.error(red('Restore failed:'), 'No snapshots found in this repository.')
-                    consola.info(dim('Run `bekk backup` first, then retry `bekk restore`.'))
+                    writeString(red('Restore failed:') + ' No snapshots found in this repository.')
+                    writeString(dim('Run `bekk backup` first, then retry `bekk restore`.'))
                     return
                 }
-                consola.error(red('Restore failed: ') + message)
+                writeString(red('Restore failed: ') + message)
                 return
             }
         }),

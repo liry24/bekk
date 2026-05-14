@@ -233,10 +233,11 @@ dependencies = [
 
 [[package]]
 name = "bekk-core"
-version = "0.4.0"
+version = "0.5.6"
 dependencies = [
  "anyhow",
  "bytesize",
+ "chrono",
  "clap",
  "rustic_backend",
  "rustic_core",

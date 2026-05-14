@@ -21,6 +21,11 @@ Hybrid CLI: TypeScript frontend (`src/`) + Rust backend (`bekk-core/`).
 
 - **`bekk-core` is a pure processing layer**. It must never contain CLI display concerns (colors, progress bars, spinner frames, or console output). Keep all terminal formatting, user-facing messages, and interactive UI inside `src/`.
 
+### Scheduler abstraction
+
+- OS-native scheduled tasks (Windows Task Scheduler, macOS `launchd`, Linux `systemd` timer) are managed by `src/lib/scheduler/`.
+- `bekk-core` only validates schedules and computes next-run times via the `schedule-info` command.
+
 ## Developer Commands
 
 ```bash
@@ -64,6 +69,7 @@ The backend exposes these operations via JSON-RPC over stdin/stdout:
 - `restore` — Restore files from a snapshot
 - `snapshots` — List snapshots
 - `clean` — Prune orphaned data, check repository integrity, and repair index
+- `schedule-info` — Validate a schedule and compute the next run time
 
 ### Prune timing
 
@@ -106,6 +112,7 @@ No test suite exists currently. Do not add tests unless explicitly requested.
 - **Windows-first**: Primary testing is on Windows. Cross-platform builds exist but are less verified.
 - **Password handling**: Password is passed to `bekk-core` via stdin (`--password-stdin` flag). The old `BEKK_REPO_PASSWORD` env var mechanism was removed.
 - **Config store**: Uses `@crustjs/store` with Zod validation. Config dir is OS-specific (`configDir('bekk')`).
+- **Scheduling**: The old `daemon` command and `Bun.cron` implementation were removed. Backups are scheduled via OS-native task schedulers (`src/lib/scheduler/`). The config field was renamed from `cronSchedule` to `scheduleConfigJson`.
 - **Do not commit**: Never run `git commit` unless explicitly asked. Never push to remote unless explicitly asked.
 - **Dry-run testing**: After implementing CLI output changes (e.g. progress bars, spinners, task lists), always run `bun run dev backup --dry-run` to verify terminal rendering. Do not skip this step when a dry-run-capable command exists for the modified feature.
 

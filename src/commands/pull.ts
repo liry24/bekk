@@ -1,15 +1,13 @@
-import { spinner } from '@crustjs/progress'
-import { select } from '@crustjs/prompts'
-import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
+import { t as styledT, dim as otuiDim } from '@opentui/core'
 import { join } from 'pathe'
 import { z } from 'zod'
 
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
 import type { SyncData } from '#lib/types'
+import { dim, select, createTaskList, writeScrollback, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
@@ -35,7 +33,7 @@ export const pullCmd = app
             const allBackends = await getEnabledBackends()
 
             if (allBackends.length === 0) {
-                consola.error(
+                writeString(
                     'No sync backends are enabled. ' +
                         dim('Run `bekk init` or `bekk gist login` to set one up.'),
                 )
@@ -60,49 +58,62 @@ export const pullCmd = app
             }
 
             if (!backend) {
-                consola.error(`No backend named "${flags.backend}" is enabled.`)
+                writeString(`No backend named "${flags.backend}" is enabled.`)
                 process.exitCode = 1
                 return
             }
 
+            const taskList = await createTaskList()
+            const pullTask = taskList.add(`Pull from ${backend.label}`)
+            taskList.update(pullTask, 'running')
+
             let syncData: SyncData | undefined
 
             try {
-                await spinner({
-                    message: `Pulling from ${backend.label}...`,
-                    task: async ({ updateMessage }) => {
-                        syncData = await backend!.pull(flags.from)
-                        updateMessage(
-                            green(bold(`Config and app lists loaded from ${backend.label}.`)),
-                        )
-                    },
-                })
+                syncData = await backend.pull(flags.from)
+                taskList.update(pullTask, 'success')
+            } catch (err) {
+                taskList.update(pullTask, 'error', formatError(err))
+                taskList.finish()
+                process.exitCode = 1
+                return
+            }
 
-                if (!syncData) {
-                    consola.error(`Pull from ${backend.label} failed: no data received`)
-                    process.exitCode = 1
-                    return
-                }
+            if (!syncData) {
+                taskList.update(pullTask, 'error', 'no data received')
+                taskList.finish()
+                process.exitCode = 1
+                return
+            }
 
-                // Write config locally
+            // Write config locally
+            const writeTask = taskList.add('Write local files')
+            taskList.update(writeTask, 'running')
+            try {
                 await configStore.write(syncData.config)
 
-                // Write app lists locally
                 const appListsDir = getAppListsDir()
+                let fileCount = 0
                 for (const [providerId, apps] of Object.entries(syncData.appLists)) {
                     if (apps !== null) {
                         await Bun.write(
                             join(appListsDir, `${providerId}.json`),
                             JSON.stringify(apps, null, 2),
                         )
+                        fileCount++
                     }
                 }
+                taskList.update(writeTask, 'success', `${fileCount} app list(s)`)
             } catch (err) {
-                consola.error(red(`Pull from ${backend.label} failed: `) + fmtErr(err))
+                taskList.update(writeTask, 'error', formatError(err))
+                taskList.finish()
                 process.exitCode = 1
                 return
             }
 
-            console.log(dim('  Run `bekk config show` to verify the loaded settings.'))
+            taskList.finish()
+            writeScrollback(
+                styledT`${otuiDim('  Run `bekk config show` to verify the loaded settings.')}`,
+            )
         }),
     )

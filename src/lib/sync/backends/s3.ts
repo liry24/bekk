@@ -1,5 +1,6 @@
 import { destr } from 'destr'
 
+import { DEFAULT_S3_REGION } from '#lib/defaults'
 import type { S3Destination, SyncBackend, SyncData } from '#lib/types'
 
 /** Object key used inside the bucket for a given config file name. */
@@ -8,7 +9,7 @@ const CONFIG_KEY = 'bekk-sync.json'
 export const createS3Backend = (dest: S3Destination, secretAccessKey: string): SyncBackend => {
     const client = new Bun.S3Client({
         bucket: dest.bucket,
-        region: dest.region || 'us-east-1',
+        region: dest.region || DEFAULT_S3_REGION,
         endpoint: dest.endpoint || undefined,
         accessKeyId: dest.accessKeyId,
         secretAccessKey,

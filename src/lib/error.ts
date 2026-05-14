@@ -1,1 +1,2 @@
-export const fmtErr = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+export const formatError = (err: unknown): string =>
+    err instanceof Error ? err.message : String(err)

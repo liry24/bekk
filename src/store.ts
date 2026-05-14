@@ -1,5 +1,5 @@
 import type { UpdateNotifierCacheAdapter } from '@crustjs/plugins'
-import { configDir, createStore, dataDir, stateDir } from '@crustjs/store'
+import { configDir, createStore, stateDir } from '@crustjs/store'
 import { fieldSync } from '@crustjs/validate/zod'
 import { z } from 'zod'
 
@@ -32,9 +32,9 @@ export const configStore = createStore({
             default: '',
             validate: fieldSync(z.string()),
         },
-        cronSchedule: {
+        scheduleConfigJson: {
             type: 'string',
-            default: '',
+            default: '[]',
             validate: fieldSync(z.string()),
         },
         gistEnabled: {
@@ -86,20 +86,6 @@ export const configStore = createStore({
 })
 
 export type ConfigStore = Awaited<ReturnType<typeof configStore.read>>
-
-// ─── Auth Store ───────────────────────────────────────────────────────────────
-
-export const authStore = createStore({
-    dirPath: dataDir('bekk'),
-    name: 'auth',
-    fields: {
-        token: {
-            type: 'string',
-            default: '',
-            validate: fieldSync(z.string()),
-        },
-    },
-})
 
 // ─── Update Notifier Store ────────────────────────────────────────────────────
 

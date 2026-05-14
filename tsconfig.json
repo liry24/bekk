@@ -18,5 +18,5 @@
             "#lib/*": ["./src/lib/*"]
         }
     },
-    "include": ["src", "bekk-core/src"]
+    "include": ["src", "bekk-core/src", "tests"]
 }

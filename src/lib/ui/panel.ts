@@ -1,69 +1,40 @@
-// ─── panel.ts ─── Unicode Box Drawing パネル描画 ────────────────────────────
+// ─── panel.ts ─── OpenTUI Box panel drawing ────────────────────────────────
 
-import { stripAnsi, wrapLines } from './layout'
+import { BoxRenderable, TextRenderable } from '@opentui/core'
 
-const BOX = {
-    tl: '┌',
-    tr: '┐',
-    bl: '└',
-    br: '┘',
-    h: '─',
-    v: '│',
-}
+import { ansiToStyledText } from './layout'
+import { getRenderer } from './renderer'
 
 export interface PanelOptions {
     title?: string
-    width?: number
-    padding?: number
-    borderColor?: number
-    titleColor?: number
 }
 
-export const drawPanel = (content: string[], options: PanelOptions = {}) => {
-    const { title, width: optWidth, padding = 1, borderColor, titleColor } = options
+export const drawPanel = async (lines: string[], options?: PanelOptions): Promise<void> => {
+    const r = await getRenderer()
+    if (r.isDestroyed) return
 
-    const maxContentWidth =
-        optWidth ??
-        Math.max(
-            ...content.map((l) => stripAnsi(l).length),
-            title ? stripAnsi(title).length + 4 : 0,
-        )
-    const innerWidth = maxContentWidth + padding * 2
-
-    const colored = (s: string, c?: number) => (c !== undefined ? `\x1b[38;5;${c}m${s}\x1b[0m` : s)
-
-    const topLine = title
-        ? colored(BOX.tl, borderColor) +
-          colored(BOX.h, borderColor).repeat(2) +
-          ' ' +
-          colored(title, titleColor) +
-          ' ' +
-          colored(BOX.h, borderColor).repeat(innerWidth - stripAnsi(title).length - 4) +
-          colored(BOX.tr, borderColor)
-        : colored(BOX.tl, borderColor) +
-          colored(BOX.h, borderColor).repeat(innerWidth) +
-          colored(BOX.tr, borderColor)
-
-    const bodyLines = content.flatMap((line) => {
-        const wrapped = wrapLines(line, maxContentWidth)
-        return wrapped.map((l) => {
-            const visible = stripAnsi(l)
-            const rightPad = Math.max(0, innerWidth - padding * 2 - visible.length)
-            return (
-                colored(BOX.v, borderColor) +
-                ' '.repeat(padding) +
-                l +
-                ' '.repeat(rightPad) +
-                ' '.repeat(padding) +
-                colored(BOX.v, borderColor)
-            )
+    r.writeToScrollback((ctx) => {
+        const box = new BoxRenderable(ctx.renderContext, {
+            borderStyle: 'rounded',
+            border: true,
+            padding: 1,
+            flexDirection: 'column',
+            title: options?.title,
+            titleAlignment: 'left',
         })
+
+        for (const line of lines) {
+            box.add(
+                new TextRenderable(ctx.renderContext, {
+                    content: ansiToStyledText(line),
+                    height: 1,
+                }),
+            )
+        }
+
+        // height: 1 (top border) + 1 (top padding) + N lines + 1 (bottom padding) + 1 (bottom border)
+        const boxHeight = lines.length + 4
+
+        return { root: box, width: ctx.width, height: boxHeight, trailingNewline: true }
     })
-
-    const bottomLine =
-        colored(BOX.bl, borderColor) +
-        colored(BOX.h, borderColor).repeat(innerWidth) +
-        colored(BOX.br, borderColor)
-
-    for (const line of [topLine, ...bodyLines, bottomLine]) console.log(line)
 }

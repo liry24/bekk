@@ -2,8 +2,8 @@ import { destr } from 'destr'
 
 import type { SyncBackend } from '#lib/types'
 
-import { authStore, configStore } from '../../../store'
-import { getS3SecretAccessKey } from '../../secrets'
+import { configStore } from '../../../store'
+import { getGitHubToken, getS3SecretAccessKey } from '../../secrets'
 import { createGistBackend } from './gist'
 import { createS3Backend } from './s3'
 
@@ -28,7 +28,7 @@ export const getEnabledBackends = async () => {
     const backends: SyncBackend[] = []
 
     if (cfg.gistEnabled) {
-        const { token } = await authStore.read()
+        const token = await getGitHubToken()
         if (token) backends.push(createGistBackend(token))
     }
 

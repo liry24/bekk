@@ -142,36 +142,32 @@ By default, `bekk clean` asks whether to enable instant-delete interactively. In
 
 Manage the automated backup schedule.
 
-| Subcommand            | Description                                                       |
-| --------------------- | ----------------------------------------------------------------- |
-| `schedule register`   | Register the backup daemon as a startup service                   |
-| `schedule unregister` | Remove the registered startup service and clear the cron schedule |
-| `schedule status`     | Show the current schedule and next run time                       |
+| Subcommand     | Description                          |
+| -------------- | ------------------------------------ |
+| `schedule add` | Register a scheduled backup task     |
+| `schedule rm`  | Remove the scheduled backup task     |
+| `schedule`     | Show current schedule and usage help |
 
 #### How it works
 
-`schedule register` does two things:
+`schedule add` registers `bekk backup` directly with the OS native task scheduler. No daemon process stays resident.
 
-1. Prompts for a **cron expression** (e.g. `0 2 * * *` for daily at 02:00 UTC) and saves it to config
-2. Registers `bekk daemon` as an OS-level startup service so it runs automatically on boot
+| Flag         | Description                     | Example                |
+| ------------ | ------------------------------- | ---------------------- |
+| `--daily`    | Run every day at HH:MM          | `--daily 02:00`        |
+| `--weekly`   | Run every week on DOW at HH:MM  | `--weekly "sun 03:00"` |
+| `--monthly`  | Run every month on DAY at HH:MM | `--monthly "1 04:00"`  |
+| `--interval` | Run every N minutes             | `--interval 30`        |
 
 Platform support:
 
-| Platform | Admin mode              | User mode                     |
-| -------- | ----------------------- | ----------------------------- |
-| Windows  | Task Scheduler (SYSTEM) | Task Scheduler (current user) |
-| macOS    | LaunchDaemon            | LaunchAgent                   |
-| Linux    | systemd system unit     | systemd user unit             |
-
-Run as admin/root to register a system-wide service; otherwise it registers for the current user only.
+| Platform | Scheduler mechanism                 |
+| -------- | ----------------------------------- |
+| Windows  | Task Scheduler (`schtasks`)         |
+| macOS    | `launchd` (`StartCalendarInterval`) |
+| Linux    | `systemd` timer                     |
 
 ---
-
-### `bekk daemon`
-
-Run the backup daemon in the foreground. It stays resident and triggers backups automatically based on the cron schedule configured with `bekk schedule register`.
-
-The daemon writes its activity log to the OS data directory (e.g. `%APPDATA%\bekk\daemon.log` on Windows). Press `Ctrl+C` to stop.
 
 ---
 

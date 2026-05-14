@@ -1,8 +1,6 @@
-import { red } from '@crustjs/style'
-import consola from 'consola'
-
 import type { CoreResult } from '#bekk-core'
 import { resolveRepoPassword } from '#lib/secrets'
+import { red, writeString } from '#lib/ui'
 
 import { configStore } from '../store'
 
@@ -19,13 +17,13 @@ export const withRepoAuth = async <T>(
     const cfg = await configStore.read()
 
     if (!cfg.repoPath) {
-        consola.error(red('Backup destination is not configured. Run `bekk init` first.'))
+        writeString(red('Backup destination is not configured. Run `bekk init` first.'))
         throw new Error('Repository not configured')
     }
 
     const password = await resolveRepoPassword()
     if (!password) {
-        consola.error(red('Backup password is not stored. Run `bekk config`.'))
+        writeString(red('Backup password is not stored. Run `bekk config`.'))
         throw new Error('Password not stored')
     }
 

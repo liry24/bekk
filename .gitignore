@@ -34,3 +34,7 @@ report.*.*.*.*.json
 .DS_Store
 
 bekk-core/target
+
+.opencode
+.agents
+skills-lock.json

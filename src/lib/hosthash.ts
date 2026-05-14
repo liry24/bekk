@@ -8,7 +8,7 @@ export const getHostHash = () => {
     const host = (Bun.env.COMPUTERNAME ?? Bun.env.HOSTNAME ?? hostname() ?? 'unknown')
         .trim()
         .toLowerCase()
-    return hasher.update(encodeURIComponent(host)).digest('hex').slice(0, 10)
+    return hasher.update(encodeURIComponent(host)).digest('hex').slice(0, 16)
 }
 
 /**

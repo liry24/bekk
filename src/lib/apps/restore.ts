@@ -13,17 +13,20 @@ const validateAppExists = async (provider: PackageProvider, app: App): Promise<b
         const id = (app.meta?.id as string | undefined) ?? app.name
         const result = Bun.spawnSync(
             [
-                'powershell.exe',
-                '-NoProfile',
-                '-NonInteractive',
-                '-Command',
-                `winget show --id "${id}" --exact --disable-interactivity --accept-source-agreements`,
+                'winget',
+                'show',
+                '--id',
+                id,
+                '--exact',
+                '--disable-interactivity',
+                '--accept-source-agreements',
             ],
             { stderr: 'ignore' },
         )
         return result.exitCode === 0
     }
     if (provider.id === 'scoop') {
+        const name = app.name.replace(/'/g, "''")
         const result = Bun.spawnSync(
             [
                 'powershell.exe',
@@ -32,7 +35,7 @@ const validateAppExists = async (provider: PackageProvider, app: App): Promise<b
                 '-ExecutionPolicy',
                 'Bypass',
                 '-Command',
-                `scoop info "${app.name}"`,
+                `& 'scoop' 'info' '${name}'`,
             ],
             { stderr: 'ignore' },
         )

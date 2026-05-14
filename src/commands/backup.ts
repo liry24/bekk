@@ -1,24 +1,35 @@
-import { bold, dim, green, red } from '@crustjs/style'
 import { commandValidator, flag } from '@crustjs/validate/zod'
-import consola from 'consola'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import type { ProgressEvent } from '#bekk-core'
 import { backupAllApps, formatAppListSummary, getAvailableProviders } from '#lib/apps'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { fmtErr } from '#lib/error'
+import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
-import { createRichProgress, drawPanel, padStart } from '#lib/ui'
-import { getRandomSpinner, getSuccessIcon, getErrorIcon } from '#lib/ui/spinner'
+import {
+    ansiToStyledText,
+    bold,
+    dim,
+    green,
+    red,
+    createRichProgress,
+    createTaskList,
+    drawPanel,
+    writeScrollback,
+    writeString,
+} from '#lib/ui'
+import { getSuccessIcon } from '#lib/ui/spinner'
 
 import { app } from '../app'
+
+const BYTES_PER_UNIT_STEP = 10
 
 const formatBytes = (n: number): string => {
     if (n === 0) return '0 B'
     const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-    const i = Math.min(units.length - 1, Math.floor(Math.log2(n) / 10))
-    const v = n / Math.pow(2, i * 10)
+    const i = Math.min(units.length - 1, Math.floor(Math.log2(n) / BYTES_PER_UNIT_STEP))
+    const v = n / Math.pow(2, i * BYTES_PER_UNIT_STEP)
     return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
@@ -48,7 +59,7 @@ export const backupCmd = app
         commandValidator(async ({ flags }) => {
             let snapshotId = ''
             let sources: string[] = []
-            const progress = createRichProgress({ barWidth: 40 })
+            const progress = await createRichProgress()
 
             try {
                 await withRepoAuth(async (cfg, password) => {
@@ -90,26 +101,19 @@ export const backupCmd = app
                             const elapsedMs = Date.now() - startedAt
                             const elapsedSec = elapsedMs / 1000
                             const speed = currentBytes / elapsedSec
-                            // Align with the '%' in the progress bar line:
-                            //   `  ${bar} ${pctStr}` → indent(2) + bar(40) + space(1) + pctStr(6) = 49
-                            // Detail line: `  Label: ${padStart(value, valueWidth)}`
-                            //   → indent(2) + label(7) + valueWidth = 49
-                            const valueWidth = 40
 
                             const sizeValue =
                                 totalBytes > 0
                                     ? `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`
-                                    : `${formatBytes(currentBytes)} / ${dim('(calculating)')} B`
-                            details.push(`Size:  ${padStart(sizeValue, valueWidth)}`)
-                            details.push(
-                                `Speed: ${padStart(`${formatBytes(speed)}/s`, valueWidth)}`,
-                            )
+                                    : `${formatBytes(currentBytes)} / (calculating) B`
+                            details.push(`Size: ${sizeValue}`)
+                            details.push(`Speed: ${formatBytes(speed)}/s`)
 
                             const etaValue =
                                 totalBytes > 0
                                     ? formatDuration((totalBytes - currentBytes) / speed)
-                                    : dim('(calculating)')
-                            details.push(`ETA:   ${padStart(etaValue, valueWidth)}`)
+                                    : '(calculating)'
+                            details.push(`ETA: ${etaValue}`)
                         }
 
                         progress.update({
@@ -133,11 +137,11 @@ export const backupCmd = app
                         ),
                     )
                     snapshotId = data.snapshot_id
-                    progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
+                    await progress.finish({ title: `  ${getSuccessIcon()} Completed backing up.` })
                 })
             } catch (err) {
-                progress.finish({ title: `  ${red('✖')} Backing up...` })
-                consola.error(red('Backup failed:'), fmtErr(err))
+                await progress.finish({ title: `  ${red('✖')} Backing up...` })
+                writeString(red('Backup failed:') + ' ' + formatError(err))
                 return
             }
 
@@ -145,97 +149,43 @@ export const backupCmd = app
             const appListsDir = getAppListsDir()
             let appSummary = ''
             const providers = getAvailableProviders()
-            const providerStates = new Map<
-                string,
-                { state: 'pending' | 'running' | 'done' | 'error'; count?: number; error?: string }
-            >()
-            for (const p of providers) providerStates.set(p.id, { state: 'pending' })
 
-            let appListTitle = 'Backing up app list...'
-            let appListRendered = 0
-            const appSpinner = getRandomSpinner()
-            let spinnerIdx = 0
-            let spinnerTimer: ReturnType<typeof setInterval> | null = null
+            if (providers.length > 0) {
+                const taskList = await createTaskList()
+                const taskIds: Record<string, string> = {}
+                for (const p of providers) taskIds[p.id] = taskList.add(p.name)
 
-            const drawAppList = (done = false) => {
-                if (appListRendered > 0) {
-                    process.stdout.write(`\x1b[${appListRendered}A`)
+                try {
+                    const result = await backupAllApps(
+                        flags['dry-run'] ? undefined : appListsDir,
+                        (providerId, state, count) => {
+                            const taskId = taskIds[providerId]
+                            if (!taskId) return
+                            if (state === 'start') taskList.update(taskId, 'running')
+                            else if (state === 'done')
+                                taskList.update(taskId, 'success', `${count} apps`)
+                            else if (state === 'error') taskList.update(taskId, 'error')
+                        },
+                    )
+                    taskList.finish()
+                    appSummary = formatAppListSummary(result)
+                } catch (err) {
+                    taskList.finish()
+                    writeString(dim('App list backup failed:') + ' ' + formatError(err))
                 }
-                const lines: string[] = ['  ' + appListTitle]
-                for (const p of providers) {
-                    const s = providerStates.get(p.id)
-                    if (!s) continue
-                    let icon: string
-                    let suffix = ''
-                    if (s.state === 'pending') {
-                        icon = dim('○')
-                    } else if (s.state === 'running') {
-                        const frame = appSpinner.frames[spinnerIdx % appSpinner.frames.length]
-                        icon = frame ?? dim('○')
-                    } else if (s.state === 'done') {
-                        icon = getSuccessIcon()
-                        suffix = `  ${s.count} apps`
-                    } else {
-                        icon = getErrorIcon()
-                        if (s.error) suffix = `  ${dim(s.error)}`
-                    }
-                    lines.push(`  ${icon} ${p.name}:${suffix}`)
-                }
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i]
-                    if (line === undefined) continue
-                    if (i > 0) process.stdout.write('\n')
-                    process.stdout.write('\x1b[2K\x1b[0G')
-                    process.stdout.write(line)
-                }
-                process.stdout.write('\n')
-                appListRendered = lines.length
-                if (done && spinnerTimer) {
-                    clearInterval(spinnerTimer)
-                    spinnerTimer = null
-                }
-            }
-
-            spinnerTimer = setInterval(() => {
-                spinnerIdx++
-                if (appListTitle === 'Backing up app list...') drawAppList()
-            }, appSpinner.interval)
-
-            try {
-                const result = await backupAllApps(
-                    flags['dry-run'] ? undefined : appListsDir,
-                    (providerId, state, count) => {
-                        const s = providerStates.get(providerId)
-                        if (!s) return
-                        if (state === 'start') s.state = 'running'
-                        else if (state === 'done') {
-                            s.state = 'done'
-                            s.count = count
-                        } else if (state === 'error') {
-                            s.state = 'error'
-                        }
-                        drawAppList()
-                    },
-                )
-                appListTitle = 'Completed backing up app list'
-                drawAppList(true)
-                appSummary = formatAppListSummary(result)
-            } catch (err) {
-                if (spinnerTimer) {
-                    clearInterval(spinnerTimer)
-                    spinnerTimer = null
-                }
-                consola.warn(dim('App list backup failed:') + ' ' + fmtErr(err))
             }
 
             // ── Summary panel ──────────────────────────────────────────────────
+            const snapshotLabel = flags['dry-run']
+                ? dim('(not created)')
+                : green(snapshotId ? snapshotId.slice(0, 8) : dim('—'))
             const summaryLines = [
-                `${bold('Snapshot:')} ${flags['dry-run'] ? dim('(not created)') : green(snapshotId ? snapshotId.slice(0, 8) : dim('—'))}`,
+                `${bold('Snapshot:')} ${snapshotLabel}`,
                 `${bold('Sources:')}  ${sources.length} path(s)`,
             ]
             if (appSummary) summaryLines.push(`${bold('Apps:')}     ${appSummary}`)
-            console.log()
-            drawPanel(summaryLines, {
+            writeScrollback(ansiToStyledText(''))
+            await drawPanel(summaryLines, {
                 title: flags['dry-run'] ? 'Dry Run Complete' : 'Backup Complete',
             })
         }),

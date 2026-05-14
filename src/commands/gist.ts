@@ -1,11 +1,9 @@
-import { confirm } from '@crustjs/prompts'
-import { bold, cyan, dim, green, yellow } from '@crustjs/style'
-import consola from 'consola'
-
 import { GITHUB_CLIENT_ID, getAuthenticatedUser, runDeviceFlow } from '#lib/github'
+import { deleteGitHubToken, getGitHubToken, setGitHubToken } from '#lib/secrets'
+import { bold, cyan, dim, green, yellow, confirm, writeString } from '#lib/ui'
 
 import { app } from '../app'
-import { authStore, configStore } from '../store'
+import { configStore } from '../store'
 
 // ─── gist login ───────────────────────────────────────────────────────────────
 
@@ -14,28 +12,30 @@ const loginCmd = app
     .sub('login')
     .meta({ description: 'Authenticate via GitHub Device Flow' })
     .run(async () => {
-        const { token } = await authStore.read()
+        const token = await getGitHubToken()
 
         if (token) {
             const username = await getAuthenticatedUser(token)
             if (username) {
-                consola.ready(green(`Already authenticated as ${bold(cyan(username))}.`))
-                consola.info(dim('Run `bekk gist logout` to sign out.'))
+                writeString(green(`Already authenticated as ${bold(cyan(username))}.`))
+                writeString(dim('Run `bekk gist logout` to sign out.'))
                 return
             }
-            consola.warn(yellow('Stored token is invalid. Re-authenticating...'))
+            writeString(yellow('Stored token is invalid. Re-authenticating...'))
         }
 
-        consola.info('Starting GitHub Device Flow authentication...')
+        writeString('Starting GitHub Device Flow authentication...')
 
         const newToken = await runDeviceFlow(GITHUB_CLIENT_ID)
-        await authStore.patch({ token: newToken })
+        // Clear device flow output (QR code, instructions)
+        writeString('\x1b[2J\x1b[H')
+        await setGitHubToken(newToken)
         await configStore.patch({ gistEnabled: true })
 
         const username = await getAuthenticatedUser(newToken)
         const label = username ? bold(cyan(username)) : 'unknown'
-        consola.success(green(`Authentication complete. Signed in as ${label}.`))
-        consola.info(dim('Gist sync is now enabled. Run `bekk push` to upload your config.'))
+        writeString(green(`Authentication complete. Signed in as ${label}.`))
+        writeString(dim('Gist sync is now enabled. Run `bekk push` to upload your config.'))
     })
 
 // ─── gist logout ──────────────────────────────────────────────────────────────
@@ -45,31 +45,31 @@ const logoutCmd = app
     .sub('logout')
     .meta({ description: 'Remove stored authentication token' })
     .run(async () => {
-        const { token } = await authStore.read()
+        const token = await getGitHubToken()
 
         if (!token) {
-            console.log(dim('Not authenticated.'))
+            writeString(dim('Not authenticated.'))
             return
         }
 
         const username = await getAuthenticatedUser(token)
         const label = username ? bold(cyan(username)) : 'unknown'
 
-        console.log(`Currently signed in as ${label}.`)
-        console.log()
+        writeString(`Currently signed in as ${label}.`)
+        writeString('')
 
         const ok = await confirm({
             message: yellow(`Sign out of ${label}?`),
             default: false,
         })
         if (!ok) {
-            console.log(dim('Cancelled.'))
+            writeString(dim('Cancelled.'))
             return
         }
 
-        await authStore.patch({ token: '' })
+        await deleteGitHubToken()
         await configStore.patch({ gistEnabled: false })
-        consola.success(green('Signed out. Gist sync disabled.'))
+        writeString(green('Signed out. Gist sync disabled.'))
     })
 
 // ─── gist (container) ─────────────────────────────────────────────────────────
