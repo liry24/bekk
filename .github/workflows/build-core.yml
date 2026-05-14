@@ -48,13 +48,12 @@ jobs:
         with:
           workspaces: bekk-core
 
-      - name: Ensure Cargo is in PATH (macOS)
-        if: runner.os == 'macOS'
-        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Build bekk-core
         working-directory: bekk-core
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Create output dir
         run: mkdir -p bekk-core-binaries
