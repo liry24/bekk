@@ -50,7 +50,7 @@ const showHint = (r: CliRenderer, msg: string): void => {
     _hintLine = new TextRenderable(r, { height: 1, content: msg })
     r.root.add(_hintLine)
     _extraFooterHeight = 1
-    r.footerHeight += 1
+    setFooterHeight(r, r.footerHeight + 1)
     r.requestRender()
 }
 
@@ -60,7 +60,7 @@ const hideHint = (r: CliRenderer): void => {
     _hintLine.destroyRecursively()
     _hintLine = null
     _extraFooterHeight = 0
-    r.footerHeight = Math.max(1, r.footerHeight - 1)
+    setFooterHeight(r, r.footerHeight - 1)
     r.requestRender()
 }
 
