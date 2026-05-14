@@ -4,10 +4,10 @@ import { join } from 'pathe'
 
 import type { ScheduleConfig, Scheduler } from './types'
 
-const LABEL = 'bekk-backup'
 const SERVICE_DIR = join(homedir(), '.config', 'systemd', 'user')
-const SERVICE_PATH = join(SERVICE_DIR, `${LABEL}.service`)
-const TIMER_PATH = join(SERVICE_DIR, `${LABEL}.timer`)
+
+const servicePath = (label: string) => join(SERVICE_DIR, `${label}.service`)
+const timerPath = (label: string) => join(SERVICE_DIR, `${label}.timer`)
 
 /**
  * Escape an argument for systemd ExecStart= lines.
@@ -86,21 +86,21 @@ const exec = (args: string[]) => {
 }
 
 export const linuxScheduler: Scheduler = {
-    async install(_label, program, args, config) {
+    async install(label, program, args, config) {
         exec(['mkdir', '-p', SERVICE_DIR])
-        await Bun.write(SERVICE_PATH, buildService(program, args))
-        await Bun.write(TIMER_PATH, buildTimer(config))
+        await Bun.write(servicePath(label), buildService(program, args))
+        await Bun.write(timerPath(label), buildTimer(config))
         exec(['systemctl', '--user', 'daemon-reload'])
-        exec(['systemctl', '--user', 'enable', '--now', `${LABEL}.timer`])
+        exec(['systemctl', '--user', 'enable', '--now', `${label}.timer`])
     },
-    async uninstall(_label) {
+    async uninstall(label) {
         try {
-            exec(['systemctl', '--user', 'disable', '--now', `${LABEL}.timer`])
+            exec(['systemctl', '--user', 'disable', '--now', `${label}.timer`])
         } catch {
             // ignore
         }
         try {
-            exec(['rm', '-f', TIMER_PATH, SERVICE_PATH])
+            exec(['rm', '-f', timerPath(label), servicePath(label)])
         } catch {
             // ignore
         }
@@ -110,8 +110,8 @@ export const linuxScheduler: Scheduler = {
             // ignore
         }
     },
-    async status(_label) {
-        const exists = await Bun.file(TIMER_PATH).exists()
+    async status(label) {
+        const exists = await Bun.file(timerPath(label)).exists()
         return { installed: exists }
     },
 }

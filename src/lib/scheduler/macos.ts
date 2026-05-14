@@ -4,9 +4,11 @@ import { join } from 'pathe'
 
 import type { ScheduleConfig, Scheduler } from './types'
 
-const LABEL = 'com.bekk.backup'
-const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
 const FALLBACK_MACOS_UID = 501
+
+const launchLabel = (label: string) => `com.bekk.${label}`
+const plistPath = (label: string) =>
+    join(homedir(), 'Library', 'LaunchAgents', `${launchLabel(label)}.plist`)
 
 /**
  * Escape text for XML plist <string> elements.
@@ -14,7 +16,12 @@ const FALLBACK_MACOS_UID = 501
 export const escapeXml = (text: string): string =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-export const buildPlist = (program: string, args: string[], config: ScheduleConfig): string => {
+export const buildPlist = (
+    label: string,
+    program: string,
+    args: string[],
+    config: ScheduleConfig,
+): string => {
     let intervalXml = ''
     if (config.type === 'interval') {
         intervalXml = `    <key>StartInterval</key>\n    <integer>${config.interval! * 60}</integer>`
@@ -42,13 +49,14 @@ export const buildPlist = (program: string, args: string[], config: ScheduleConf
     }
 
     const logDir = join(homedir(), 'Library', 'Logs')
+    const ll = launchLabel(label)
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${escapeXml(LABEL)}</string>
+    <string>${escapeXml(ll)}</string>
     <key>ProgramArguments</key>
     <array>
         <string>${escapeXml(program)}</string>
@@ -56,9 +64,9 @@ ${args.map((a) => `        <string>${escapeXml(a)}</string>`).join('\n')}
     </array>
 ${intervalXml}
     <key>StandardOutPath</key>
-    <string>${escapeXml(join(logDir, 'bekk-backup.log'))}</string>
+    <string>${escapeXml(join(logDir, `${label}.log`))}</string>
     <key>StandardErrorPath</key>
-    <string>${escapeXml(join(logDir, 'bekk-backup-error.log'))}</string>
+    <string>${escapeXml(join(logDir, `${label}-error.log`))}</string>
 </dict>
 </plist>`
 }
@@ -71,27 +79,29 @@ const exec = (args: string[]) => {
 }
 
 export const macosScheduler: Scheduler = {
-    async install(_label, program, args, config) {
-        await Bun.write(PLIST_PATH, buildPlist(program, args, config))
+    async install(label, program, args, config) {
+        const path = plistPath(label)
+        await Bun.write(path, buildPlist(label, program, args, config))
         const uid = String(process.getuid?.() ?? FALLBACK_MACOS_UID)
-        exec(['launchctl', 'bootstrap', `gui/${uid}`, PLIST_PATH])
+        exec(['launchctl', 'bootstrap', `gui/${uid}`, path])
     },
-    async uninstall(_label) {
-        if (!(await Bun.file(PLIST_PATH).exists())) return
+    async uninstall(label) {
+        const path = plistPath(label)
+        if (!(await Bun.file(path).exists())) return
         const uid = String(process.getuid?.() ?? FALLBACK_MACOS_UID)
         try {
-            exec(['launchctl', 'bootout', `gui/${uid}`, PLIST_PATH])
+            exec(['launchctl', 'bootout', `gui/${uid}`, path])
         } catch {
             // ignore
         }
         try {
-            exec(['rm', '-f', PLIST_PATH])
+            exec(['rm', '-f', path])
         } catch {
             // ignore
         }
     },
-    async status(_label) {
-        const exists = await Bun.file(PLIST_PATH).exists()
+    async status(label) {
+        const exists = await Bun.file(plistPath(label)).exists()
         return { installed: exists }
     },
 }

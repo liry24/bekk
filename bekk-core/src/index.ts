@@ -215,7 +215,7 @@ const buildInitConfig = (normalizedRepo: string): InitConfigPayload => ({
     gistId: '',
     gistEnabled: false,
     s3DestinationsJson: '[]',
-    scheduleConfigJson: '{}',
+    scheduleConfigJson: '[]',
     compression: 1,
     extraVerify: true,
     packSizeMib: 32,

@@ -36,18 +36,19 @@ describe('escapeXml', () => {
 // ─── buildPlist ───────────────────────────────────────────────────────────────
 
 describe('buildPlist', () => {
+    const label = 'bekk-backup-0'
     const program = '/usr/local/bin/bun'
     const args = ['run', 'backup']
 
     it('includes program and args in ProgramArguments', () => {
-        const plist = buildPlist(program, args, { type: 'daily', time: '09:00' })
+        const plist = buildPlist(label, program, args, { type: 'daily', time: '09:00' })
         expect(plist).toContain(`<string>${program}</string>`)
         expect(plist).toContain('<string>run</string>')
         expect(plist).toContain('<string>backup</string>')
     })
 
     it('builds daily plist with StartCalendarInterval (Hour + Minute, no Weekday/Day)', () => {
-        const plist = buildPlist(program, args, { type: 'daily', time: '09:30' })
+        const plist = buildPlist(label, program, args, { type: 'daily', time: '09:30' })
         expect(plist).toContain('<key>StartCalendarInterval</key>')
         expect(plist).toContain('<key>Hour</key>')
         expect(plist).toContain('<integer>9</integer>')
@@ -59,7 +60,11 @@ describe('buildPlist', () => {
     })
 
     it('builds weekly plist with Weekday key (Mon = 1)', () => {
-        const plist = buildPlist(program, args, { type: 'weekly', day: 'mon', time: '08:00' })
+        const plist = buildPlist(label, program, args, {
+            type: 'weekly',
+            day: 'mon',
+            time: '08:00',
+        })
         expect(plist).toContain('<key>Weekday</key>')
         expect(plist).toContain('<integer>1</integer>')
     })
@@ -75,14 +80,18 @@ describe('buildPlist', () => {
             sun: 0,
         }
         for (const [day, weekday] of Object.entries(expected)) {
-            const plist = buildPlist(program, args, { type: 'weekly', day, time: '00:00' })
+            const plist = buildPlist(label, program, args, { type: 'weekly', day, time: '00:00' })
             // The integer appears somewhere in the plist for Weekday
             expect(plist).toContain(`<integer>${weekday}</integer>`)
         }
     })
 
     it('builds monthly plist with Day key', () => {
-        const plist = buildPlist(program, args, { type: 'monthly', day: '15', time: '23:00' })
+        const plist = buildPlist(label, program, args, {
+            type: 'monthly',
+            day: '15',
+            time: '23:00',
+        })
         expect(plist).toContain('<key>Day</key>')
         expect(plist).toContain('<integer>15</integer>')
         expect(plist).not.toContain('<key>Weekday</key>')
@@ -90,7 +99,7 @@ describe('buildPlist', () => {
     })
 
     it('builds interval plist with StartInterval (seconds = interval * 60)', () => {
-        const plist = buildPlist(program, args, { type: 'interval', interval: 30 })
+        const plist = buildPlist(label, program, args, { type: 'interval', interval: 30 })
         expect(plist).toContain('<key>StartInterval</key>')
         expect(plist).toContain('<integer>1800</integer>') // 30 * 60
         expect(plist).not.toContain('<key>StartCalendarInterval</key>')
@@ -98,13 +107,13 @@ describe('buildPlist', () => {
 
     it('escapes special XML chars in program path', () => {
         const specialProgram = '/home/user/my & app/bun'
-        const plist = buildPlist(specialProgram, args, { type: 'daily', time: '09:00' })
+        const plist = buildPlist(label, specialProgram, args, { type: 'daily', time: '09:00' })
         expect(plist).toContain('my &amp; app')
         expect(plist).not.toContain('my & app')
     })
 
     it('contains valid plist DOCTYPE declaration', () => {
-        const plist = buildPlist(program, args, { type: 'daily', time: '09:00' })
+        const plist = buildPlist(label, program, args, { type: 'daily', time: '09:00' })
         expect(plist).toContain('<?xml version="1.0"')
         expect(plist).toContain('<!DOCTYPE plist')
     })
