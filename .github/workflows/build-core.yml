@@ -39,6 +39,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust
+        id: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -48,12 +49,19 @@ jobs:
         with:
           workspaces: bekk-core
 
-      - name: Build bekk-core
+      - name: Build bekk-core (macOS)
+        if: runner.os == 'macOS'
         working-directory: bekk-core
         shell: bash
         run: |
-          export PATH="$HOME/.cargo/bin:$PATH"
-          cargo build --release --target ${{ matrix.target }}
+          "$CARGO_HOME/bin/rustup" run "${{ steps.toolchain.outputs.name }}" \
+            cargo build --release --target ${{ matrix.target }}
+
+      - name: Build bekk-core (non-macOS)
+        if: runner.os != 'macOS'
+        working-directory: bekk-core
+        shell: bash
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Create output dir
         run: mkdir -p bekk-core-binaries
