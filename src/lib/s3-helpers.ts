@@ -24,6 +24,7 @@ export const promptS3Destination = async (
     const name = await input({
         message: `  Name  ${dim('(used to identify this destination)')}`,
         placeholder: defaultName,
+        default: defaultName,
         validate: (v) => {
             if (!v.trim()) return 'Name is required'
             if (existingNames.some((n) => n === v.trim()))
