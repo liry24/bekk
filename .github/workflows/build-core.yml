@@ -54,7 +54,7 @@ jobs:
         working-directory: bekk-core
         shell: bash
         run: |
-          "$CARGO_HOME/bin/rustup" run "${{ steps.toolchain.outputs.name }}" \
+          rustup run "${{ steps.toolchain.outputs.name }}" \
             cargo build --release --target ${{ matrix.target }}
 
       - name: Build bekk-core (non-macOS)
