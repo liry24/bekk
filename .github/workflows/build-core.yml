@@ -38,13 +38,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Rust
-        id: toolchain
+      - name: Setup Rust (non-macOS)
+        if: runner.os != 'macOS'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
+      - name: Setup Rust (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          RUSTUP_HOME: ${{ runner.temp }}/rustup
+          CARGO_HOME: ${{ runner.temp }}/cargo
+        run: |
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused \
+            --location --silent --show-error --fail https://sh.rustup.rs | sh -s -- \
+            --default-toolchain stable --profile minimal --no-modify-path -y
+          echo "RUSTUP_HOME=$RUSTUP_HOME" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$CARGO_HOME" >> "$GITHUB_ENV"
+          "$CARGO_HOME/bin/rustup" target add ${{ matrix.target }}
+
       - name: Cache Cargo
+        if: runner.os != 'macOS'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: bekk-core
@@ -54,8 +69,7 @@ jobs:
         working-directory: bekk-core
         shell: bash
         run: |
-          rustup run "${{ steps.toolchain.outputs.name }}" \
-            cargo build --release --target ${{ matrix.target }}
+          "$CARGO_HOME/bin/cargo" build --release --target ${{ matrix.target }}
 
       - name: Build bekk-core (non-macOS)
         if: runner.os != 'macOS'
