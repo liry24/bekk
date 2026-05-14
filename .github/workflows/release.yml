@@ -68,6 +68,16 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install @opentui cross-platform native packages
+        run: |
+          VER=$(node -p "require('./node_modules/@opentui/core/package.json').version")
+          npm install --no-package-lock --no-save \
+            @opentui/core-linux-arm64@$VER \
+            @opentui/core-darwin-x64@$VER \
+            @opentui/core-darwin-arm64@$VER \
+            @opentui/core-win32-x64@$VER \
+            @opentui/core-win32-arm64@$VER
+
       - name: Build npm packages (all platforms)
         run: bun run package
 
