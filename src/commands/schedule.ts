@@ -1,3 +1,6 @@
+import { commandValidator, flag } from '@crustjs/validate'
+import { z } from 'zod'
+
 import { bekkCore } from '#bekk-core'
 import { unwrapCoreResult } from '#lib/core-helpers'
 import { formatError } from '#lib/error'
@@ -173,100 +176,102 @@ const addCmd = app
     .sub('add')
     .meta({ description: 'Register a scheduled backup task' })
     .flags({
-        daily: { type: 'string', description: 'Daily schedule (HH:MM)' },
-        weekly: { type: 'string', description: 'Weekly schedule ("DOW HH:MM")' },
-        monthly: { type: 'string', description: 'Monthly schedule ("DAY HH:MM")' },
-        interval: { type: 'number', description: 'Interval in minutes' },
+        daily: flag(z.string().optional().describe('Daily schedule (HH:MM)')),
+        weekly: flag(z.string().optional().describe('Weekly schedule ("DOW HH:MM")')),
+        monthly: flag(z.string().optional().describe('Monthly schedule ("DAY HH:MM")')),
+        interval: flag(z.number().optional().describe('Interval in minutes')),
     })
-    .run(async ({ flags }) => {
-        let config: ScheduleConfig
+    .run(
+        commandValidator(async ({ flags }) => {
+            let config: ScheduleConfig
 
-        const hasFlag =
-            flags.daily !== undefined ||
-            flags.weekly !== undefined ||
-            flags.monthly !== undefined ||
-            flags.interval !== undefined
+            const hasFlag =
+                flags.daily !== undefined ||
+                flags.weekly !== undefined ||
+                flags.monthly !== undefined ||
+                flags.interval !== undefined
 
-        if (hasFlag) {
-            // Non-interactive: parse from flags
-            if (flags.daily) {
-                const v = validateTime(flags.daily.trim())
-                if (v !== true) {
-                    writeString(red('Error: ') + v)
-                    process.exit(1)
+            if (hasFlag) {
+                // Non-interactive: parse from flags
+                if (flags.daily) {
+                    const v = validateTime(flags.daily.trim())
+                    if (v !== true) {
+                        writeString(red('Error: ') + v)
+                        process.exit(1)
+                    }
+                    config = { type: 'daily', time: flags.daily.trim() }
+                } else if (flags.weekly) {
+                    const parts = flags.weekly.trim().split(/\s+/)
+                    if (parts.length !== 2) {
+                        writeString(red('Error: ') + 'Weekly schedule must be "DOW HH:MM"')
+                        process.exit(1)
+                    }
+                    const vd = validateDayOfWeek(parts[0]!)
+                    if (vd !== true) {
+                        writeString(red('Error: ') + vd)
+                        process.exit(1)
+                    }
+                    const vt = validateTime(parts[1]!)
+                    if (vt !== true) {
+                        writeString(red('Error: ') + vt)
+                        process.exit(1)
+                    }
+                    config = { type: 'weekly', day: parts[0], time: parts[1] }
+                } else if (flags.monthly) {
+                    const parts = flags.monthly.trim().split(/\s+/)
+                    if (parts.length !== 2) {
+                        writeString(red('Error: ') + 'Monthly schedule must be "DAY HH:MM"')
+                        process.exit(1)
+                    }
+                    const vd = validateDayOfMonth(parts[0]!)
+                    if (vd !== true) {
+                        writeString(red('Error: ') + vd)
+                        process.exit(1)
+                    }
+                    const vt = validateTime(parts[1]!)
+                    if (vt !== true) {
+                        writeString(red('Error: ') + vt)
+                        process.exit(1)
+                    }
+                    config = { type: 'monthly', day: parts[0], time: parts[1] }
+                } else {
+                    config = { type: 'interval', interval: flags.interval! }
                 }
-                config = { type: 'daily', time: flags.daily.trim() }
-            } else if (flags.weekly) {
-                const parts = flags.weekly.trim().split(/\s+/)
-                if (parts.length !== 2) {
-                    writeString(red('Error: ') + 'Weekly schedule must be "DOW HH:MM"')
-                    process.exit(1)
-                }
-                const vd = validateDayOfWeek(parts[0]!)
-                if (vd !== true) {
-                    writeString(red('Error: ') + vd)
-                    process.exit(1)
-                }
-                const vt = validateTime(parts[1]!)
-                if (vt !== true) {
-                    writeString(red('Error: ') + vt)
-                    process.exit(1)
-                }
-                config = { type: 'weekly', day: parts[0], time: parts[1] }
-            } else if (flags.monthly) {
-                const parts = flags.monthly.trim().split(/\s+/)
-                if (parts.length !== 2) {
-                    writeString(red('Error: ') + 'Monthly schedule must be "DAY HH:MM"')
-                    process.exit(1)
-                }
-                const vd = validateDayOfMonth(parts[0]!)
-                if (vd !== true) {
-                    writeString(red('Error: ') + vd)
-                    process.exit(1)
-                }
-                const vt = validateTime(parts[1]!)
-                if (vt !== true) {
-                    writeString(red('Error: ') + vt)
-                    process.exit(1)
-                }
-                config = { type: 'monthly', day: parts[0], time: parts[1] }
             } else {
-                config = { type: 'interval', interval: flags.interval! }
+                // Interactive mode
+                try {
+                    config = await promptScheduleConfig()
+                } catch (err) {
+                    if (err instanceof CancelledError) process.exit(0)
+                    writeString(red('Error: ') + formatError(err))
+                    process.exit(1)
+                }
             }
-        } else {
-            // Interactive mode
+
             try {
-                config = await promptScheduleConfig()
+                unwrapCoreResult(await bekkCore.scheduleInfo(buildScheduleInfoOpts(config)))
             } catch (err) {
-                if (err instanceof CancelledError) process.exit(0)
-                writeString(red('Error: ') + formatError(err))
+                writeString(red('Invalid schedule: ') + formatError(err))
                 process.exit(1)
             }
-        }
 
-        try {
-            unwrapCoreResult(await bekkCore.scheduleInfo(buildScheduleInfoOpts(config)))
-        } catch (err) {
-            writeString(red('Invalid schedule: ') + formatError(err))
-            process.exit(1)
-        }
+            const entries = await readScheduleEntries()
+            const label = nextTaskLabel(entries)
+            const scheduler = getScheduler()
+            const { program, args } = getProgramAndArgs()
 
-        const entries = await readScheduleEntries()
-        const label = nextTaskLabel(entries)
-        const scheduler = getScheduler()
-        const { program, args } = getProgramAndArgs()
+            try {
+                await scheduler.install(label, program, args, config)
+            } catch (err) {
+                writeString(red('Failed to install schedule: ') + formatError(err))
+                process.exit(1)
+            }
 
-        try {
-            await scheduler.install(label, program, args, config)
-        } catch (err) {
-            writeString(red('Failed to install schedule: ') + formatError(err))
-            process.exit(1)
-        }
-
-        await saveScheduleEntries([...entries, { label, config }])
-        console.log(green('✓ ') + bold('Schedule registered') + dim(` (${label})`))
-        console.log(dim('  ') + formatSchedule(config))
-    })
+            await saveScheduleEntries([...entries, { label, config }])
+            console.log(green('✓ ') + bold('Schedule registered') + dim(` (${label})`))
+            console.log(dim('  ') + formatSchedule(config))
+        }),
+    )
 
 // ─── schedule rm ──────────────────────────────────────────────────────────────
 
@@ -275,82 +280,86 @@ const rmCmd = app
     .sub('rm')
     .meta({ description: 'Remove a scheduled backup task' })
     .flags({
-        all: { type: 'boolean', description: 'Remove all scheduled tasks' },
+        all: flag(z.boolean().default(false).describe('Remove all scheduled tasks')),
     })
-    .run(async ({ flags }) => {
-        const entries = await readScheduleEntries()
+    .run(
+        commandValidator(async ({ flags }) => {
+            const entries = await readScheduleEntries()
 
-        if (entries.length === 0) {
-            console.log(dim('  No schedules configured.'))
-            return
-        }
-
-        const scheduler = getScheduler()
-
-        if (flags.all) {
-            console.log(bold('Scheduled tasks to be removed:'))
-            for (const e of entries) {
-                console.log(dim('  • ') + cyan(e.label) + dim(' — ') + formatSchedule(e.config))
-            }
-            console.log()
-
-            let confirmed: boolean
-            try {
-                confirmed = await confirm({ message: `Remove all ${entries.length} schedule(s)?` })
-            } catch {
-                process.exit(0)
-            }
-
-            if (!confirmed) {
-                console.log(yellow('Aborted.'))
+            if (entries.length === 0) {
+                console.log(dim('  No schedules configured.'))
                 return
             }
 
-            const failed: string[] = []
-            for (const e of entries) {
-                try {
-                    await scheduler.uninstall(e.label)
-                } catch (err) {
-                    failed.push(`${e.label}: ${formatError(err)}`)
+            const scheduler = getScheduler()
+
+            if (flags.all) {
+                console.log(bold('Scheduled tasks to be removed:'))
+                for (const e of entries) {
+                    console.log(dim('  • ') + cyan(e.label) + dim(' — ') + formatSchedule(e.config))
                 }
+                console.log()
+
+                let confirmed: boolean
+                try {
+                    confirmed = await confirm({
+                        message: `Remove all ${entries.length} schedule(s)?`,
+                    })
+                } catch {
+                    process.exit(0)
+                }
+
+                if (!confirmed) {
+                    console.log(yellow('Aborted.'))
+                    return
+                }
+
+                const failed: string[] = []
+                for (const e of entries) {
+                    try {
+                        await scheduler.uninstall(e.label)
+                    } catch (err) {
+                        failed.push(`${e.label}: ${formatError(err)}`)
+                    }
+                }
+
+                await saveScheduleEntries([])
+
+                if (failed.length > 0) {
+                    for (const msg of failed) writeString(red('Warning: ') + msg)
+                }
+
+                console.log(green('✓ ') + bold(`All schedules removed`))
+                return
             }
 
-            await saveScheduleEntries([])
-
-            if (failed.length > 0) {
-                for (const msg of failed) writeString(red('Warning: ') + msg)
+            // Select one to remove
+            let chosen: ScheduleEntry
+            try {
+                chosen = await select<ScheduleEntry>({
+                    message: 'Select schedule to remove',
+                    choices: entries.map((e) => ({
+                        label: `${e.label}  ${dim(formatSchedule(e.config))}`,
+                        value: e,
+                    })),
+                })
+            } catch (err) {
+                if (err instanceof CancelledError) process.exit(0)
+                writeString(red('Error: ') + formatError(err))
+                process.exit(1)
             }
 
-            console.log(green('✓ ') + bold(`All schedules removed`))
-            return
-        }
+            try {
+                await scheduler.uninstall(chosen.label)
+            } catch (err) {
+                writeString(red('Failed to remove schedule: ') + formatError(err))
+                process.exit(1)
+            }
 
-        // Select one to remove
-        let chosen: ScheduleEntry
-        try {
-            chosen = await select<ScheduleEntry>({
-                message: 'Select schedule to remove',
-                choices: entries.map((e) => ({
-                    label: `${e.label}  ${dim(formatSchedule(e.config))}`,
-                    value: e,
-                })),
-            })
-        } catch (err) {
-            if (err instanceof CancelledError) process.exit(0)
-            writeString(red('Error: ') + formatError(err))
-            process.exit(1)
-        }
-
-        try {
-            await scheduler.uninstall(chosen.label)
-        } catch (err) {
-            writeString(red('Failed to remove schedule: ') + formatError(err))
-            process.exit(1)
-        }
-
-        await saveScheduleEntries(entries.filter((e) => e.label !== chosen.label))
-        console.log(green('✓ ') + bold('Schedule removed') + dim(` (${chosen.label})`))
-    })
+            await saveScheduleEntries(entries.filter((e) => e.label !== chosen.label))
+            console.log(green('✓ ') + bold('Schedule removed') + dim(` (${chosen.label})`))
+        }),
+    )
 
 // ─── schedule (default) ───────────────────────────────────────────────────────
 
