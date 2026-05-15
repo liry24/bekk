@@ -1,4 +1,4 @@
-import { commandValidator, flag } from '@crustjs/validate/zod'
+import { commandValidator, flag } from '@crustjs/validate'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'

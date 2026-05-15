@@ -1,6 +1,6 @@
 import { Crust } from '@crustjs/core'
 import {
-    autoCompletePlugin,
+    didYouMeanPlugin,
     helpPlugin,
     noColorPlugin,
     updateNotifierPlugin,
@@ -14,7 +14,7 @@ export const app = new Crust('bekk')
     .meta({ description: 'Cross-platform backup CLI' })
     .use(versionPlugin(pkg.version))
     .use(noColorPlugin())
-    .use(autoCompletePlugin({ mode: 'help' }))
+    .use(didYouMeanPlugin())
     .use(helpPlugin())
     .use(
         updateNotifierPlugin({

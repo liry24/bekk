@@ -1,4 +1,4 @@
-import { commandValidator, flag } from '@crustjs/validate/zod'
+import { commandValidator, flag } from '@crustjs/validate'
 import { destr } from 'destr'
 import { join } from 'pathe'
 import { z } from 'zod'
