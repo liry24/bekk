@@ -1,5 +1,6 @@
 import { Crust } from '@crustjs/core'
 import {
+    completionPlugin,
     didYouMeanPlugin,
     helpPlugin,
     noColorPlugin,
@@ -16,6 +17,7 @@ export const app = new Crust('bekk')
     .use(noColorPlugin())
     .use(didYouMeanPlugin())
     .use(helpPlugin())
+    .use(completionPlugin({ version: pkg.version }))
     .use(
         updateNotifierPlugin({
             packageName: pkg.name,
