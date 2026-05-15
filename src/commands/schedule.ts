@@ -45,9 +45,20 @@ export const validateDayOfMonth = (day: string): string | true => {
     return true
 }
 
-export const validateInterval = (val: string): string | true => {
+const parseIntervalMinutes = (val: string): number | null => {
     const n = Number(val)
-    if (isNaN(n) || !Number.isInteger(n) || n < 1)
+    if (isNaN(n) || !Number.isInteger(n) || n < 1) return null
+    return n
+}
+
+export const intervalMinutesFlagSchema = z
+    .string()
+    .refine((val) => parseIntervalMinutes(val) !== null, {
+        message: 'Expected a positive integer (minutes)',
+    })
+
+export const validateInterval = (val: string): string | true => {
+    if (!intervalMinutesFlagSchema.safeParse(val).success)
         return `Invalid interval. Expected a positive integer (minutes)`
     return true
 }
@@ -179,7 +190,7 @@ const addCmd = app
         daily: flag(z.string().optional().describe('Daily schedule (HH:MM)')),
         weekly: flag(z.string().optional().describe('Weekly schedule ("DOW HH:MM")')),
         monthly: flag(z.string().optional().describe('Monthly schedule ("DAY HH:MM")')),
-        interval: flag(z.number().optional().describe('Interval in minutes')),
+        interval: flag(intervalMinutesFlagSchema.optional().describe('Interval in minutes')),
     })
     .run(
         commandValidator(async ({ flags }) => {
@@ -235,7 +246,15 @@ const addCmd = app
                     }
                     config = { type: 'monthly', day: parts[0], time: parts[1] }
                 } else {
-                    config = { type: 'interval', interval: flags.interval! }
+                    const interval = parseIntervalMinutes(flags.interval!)
+                    if (interval === null) {
+                        writeString(
+                            red('Error: ') +
+                                'Invalid interval. Expected a positive integer (minutes)',
+                        )
+                        process.exit(1)
+                    }
+                    config = { type: 'interval', interval }
                 }
             } else {
                 // Interactive mode

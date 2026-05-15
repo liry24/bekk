@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+    intervalMinutesFlagSchema,
     validateDayOfMonth,
     validateDayOfWeek,
     validateInterval,
@@ -157,5 +158,19 @@ describe('validateInterval', () => {
 
     it('rejects empty string', () => {
         expect(validateInterval('')).not.toBe(true)
+    })
+})
+
+describe('intervalMinutesFlagSchema', () => {
+    it('accepts numeric strings', () => {
+        expect(intervalMinutesFlagSchema.safeParse('15').success).toBe(true)
+    })
+
+    it('rejects decimal values', () => {
+        expect(intervalMinutesFlagSchema.safeParse('1.5').success).toBe(false)
+    })
+
+    it('rejects negative values', () => {
+        expect(intervalMinutesFlagSchema.safeParse('-5').success).toBe(false)
     })
 })
