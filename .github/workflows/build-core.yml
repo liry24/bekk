@@ -40,7 +40,7 @@ jobs:
 
       - name: Setup Rust (non-macOS)
         if: runner.os != 'macOS'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
           targets: ${{ matrix.target }}
 

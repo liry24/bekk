@@ -152,12 +152,12 @@ Manage the automated backup schedule.
 
 `schedule add` registers `bekk backup` directly with the OS native task scheduler. No daemon process stays resident.
 
-| Flag         | Description                     | Example                |
-| ------------ | ------------------------------- | ---------------------- |
-| `--daily`    | Run every day at HH:MM          | `--daily 02:00`        |
-| `--weekly`   | Run every week on DOW at HH:MM  | `--weekly "sun 03:00"` |
-| `--monthly`  | Run every month on DAY at HH:MM | `--monthly "1 04:00"`  |
-| `--interval` | Run every N minutes             | `--interval 30`        |
+| Flag         | Description                            | Example                |
+| ------------ | -------------------------------------- | ---------------------- |
+| `--daily`    | Run every day at HH:MM                 | `--daily 02:00`        |
+| `--weekly`   | Run every week on DOW at HH:MM         | `--weekly "sun 03:00"` |
+| `--monthly`  | Run every month on DAY at HH:MM        | `--monthly "1 04:00"`  |
+| `--interval` | Run every N minutes (positive integer) | `--interval 30`        |
 
 Platform support:
 

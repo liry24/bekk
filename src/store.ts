@@ -1,6 +1,5 @@
 import type { UpdateNotifierCacheAdapter } from '@crustjs/plugins'
-import { configDir, createStore, stateDir } from '@crustjs/store'
-import { fieldSync } from '@crustjs/validate/zod'
+import { configDir, createStore, field, stateDir } from '@crustjs/store'
 import { z } from 'zod'
 
 import {
@@ -16,72 +15,21 @@ import {
 export const configStore = createStore({
     dirPath: configDir('bekk'),
     fields: {
-        sourcePaths: {
-            type: 'string',
-            array: true,
-            default: [] as string[],
-            validate: fieldSync(z.array(z.string())),
-        },
-        repoPath: {
-            type: 'string',
-            default: '',
-            validate: fieldSync(z.string()),
-        },
-        gistId: {
-            type: 'string',
-            default: '',
-            validate: fieldSync(z.string()),
-        },
-        scheduleConfigJson: {
-            type: 'string',
-            default: '[]',
-            validate: fieldSync(z.string()),
-        },
-        gistEnabled: {
-            type: 'boolean',
-            default: false,
-            validate: fieldSync(z.boolean()),
-        },
-        s3DestinationsJson: {
-            type: 'string',
-            default: '[]',
-            validate: fieldSync(z.string()),
-        },
-        providerConfigsJson: {
-            type: 'string',
-            default: '{}',
-            validate: fieldSync(z.string()),
-        },
-        compression: {
-            type: 'number',
-            default: DEFAULT_COMPRESSION,
-            validate: fieldSync(z.number().int().min(-7).max(22)),
-        },
-        extraVerify: {
-            type: 'boolean',
-            default: DEFAULT_EXTRA_VERIFY,
-            validate: fieldSync(z.boolean()),
-        },
-        packSizeMib: {
-            type: 'number',
-            default: DEFAULT_PACK_SIZE_MIB,
-            validate: fieldSync(z.number().int().positive()),
-        },
-        chunkSizeMib: {
-            type: 'number',
-            default: DEFAULT_CHUNK_SIZE_MIB,
-            validate: fieldSync(z.number().int().positive()),
-        },
-        snapshotLimit: {
-            type: 'number',
+        sourcePaths: field(z.array(z.string()), { default: [] }),
+        repoPath: field(z.string(), { default: '' }),
+        gistId: field(z.string(), { default: '' }),
+        scheduleConfigJson: field(z.string(), { default: '[]' }),
+        gistEnabled: field(z.boolean(), { default: false }),
+        s3DestinationsJson: field(z.string(), { default: '[]' }),
+        providerConfigsJson: field(z.string(), { default: '{}' }),
+        compression: field(z.number().int().min(-7).max(22), { default: DEFAULT_COMPRESSION }),
+        extraVerify: field(z.boolean(), { default: DEFAULT_EXTRA_VERIFY }),
+        packSizeMib: field(z.number().int().positive(), { default: DEFAULT_PACK_SIZE_MIB }),
+        chunkSizeMib: field(z.number().int().positive(), { default: DEFAULT_CHUNK_SIZE_MIB }),
+        snapshotLimit: field(z.number().int().positive().min(1), {
             default: DEFAULT_SNAPSHOT_LIMIT,
-            validate: fieldSync(z.number().int().positive().min(1)),
-        },
-        savedPassword: {
-            type: 'string',
-            default: '',
-            validate: fieldSync(z.string()),
-        },
+        }),
+        savedPassword: field(z.string(), { default: '' }),
     },
 })
 

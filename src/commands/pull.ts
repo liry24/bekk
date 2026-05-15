@@ -1,4 +1,4 @@
-import { commandValidator, flag } from '@crustjs/validate/zod'
+import { commandValidator, flag } from '@crustjs/validate'
 import { t as styledT, dim as otuiDim } from '@opentui/core'
 import { join } from 'pathe'
 import { z } from 'zod'

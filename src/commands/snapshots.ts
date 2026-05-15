@@ -1,9 +1,9 @@
-import { flag } from '@crustjs/validate/zod'
+import { flag } from '@crustjs/validate'
 import { z } from 'zod'
 
 import { bekkCore } from '#bekk-core'
 import { withRepoAuth, unwrapCoreResult } from '#lib/core-helpers'
-import { bold, dim, green, table, getRenderer, writeString } from '#lib/ui'
+import { bold, dim, green, table, writeString } from '#lib/ui'
 
 import { app } from '../app'
 
@@ -11,12 +11,11 @@ const formatTime = (isoStr: string) => new Date(isoStr).toLocaleString()
 
 export const snapshotsCmd = app
     .sub('snapshots')
-    .meta({ description: 'List all snapshots in the backup repository' })
+    .meta({ description: 'List all snapshots in the backup repository', aliases: ['snap'] })
     .flags({
         json: flag(z.boolean().default(false).describe('Output raw JSON')),
     })
     .run(async ({ flags }) => {
-        await getRenderer()
         const snaps = await withRepoAuth(async (cfg, password) => {
             return unwrapCoreResult(await bekkCore.snapshots(cfg.repoPath, password))
         })
