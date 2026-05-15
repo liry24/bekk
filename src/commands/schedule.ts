@@ -401,7 +401,7 @@ const showStatus = async () => {
 
 export const scheduleCmd = app
     .sub('schedule')
-    .meta({ description: 'Manage the automated backup schedule' })
+    .meta({ description: 'Manage the automated backup schedule', aliases: ['sch'] })
     .command(addCmd)
     .command(rmCmd)
     .run(async () => {

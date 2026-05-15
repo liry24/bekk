@@ -11,7 +11,7 @@ const formatTime = (isoStr: string) => new Date(isoStr).toLocaleString()
 
 export const snapshotsCmd = app
     .sub('snapshots')
-    .meta({ description: 'List all snapshots in the backup repository' })
+    .meta({ description: 'List all snapshots in the backup repository', aliases: ['snap'] })
     .flags({
         json: flag(z.boolean().default(false).describe('Output raw JSON')),
     })
