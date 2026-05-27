@@ -67,6 +67,9 @@ interface BekkCoreProc {
     exited: Promise<number>
 }
 
+const readStreamText = (stream: ReadableStream<Uint8Array>): Promise<string> =>
+    new Response(stream).text()
+
 const execBekkCore = (
     args: string[],
     password?: string,
@@ -88,10 +91,12 @@ const execBekkCore = (
 }
 
 const parseCoreResult = async (proc: BekkCoreProc): Promise<CoreResult> => {
+    const stdoutPromise = readStreamText(proc.stdout)
+    const stderrPromise = readStreamText(proc.stderr)
+
     await proc.exited
-    const stdout = await new Response(proc.stdout).text()
+    const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
     if (!stdout.trim()) {
-        const stderr = await new Response(proc.stderr).text()
         return { status: 'error', message: stderr.trim() || 'bekk-core returned no output' }
     }
     try {
@@ -131,6 +136,7 @@ const runBekkCoreStream = async (
     newPassword?: string,
 ): Promise<CoreResult> => {
     const { proc } = execBekkCore(args, password, newPassword)
+    const stderrPromise = readStreamText(proc.stderr)
 
     let result: CoreResult | null = null
     const pendingLines: string[] = []
@@ -153,12 +159,12 @@ const runBekkCoreStream = async (
     })
 
     await proc.exited
+    const stderr = await stderrPromise
 
     if (result) return result
 
     const stdout = pendingLines.join('\n')
     if (!stdout.trim()) {
-        const stderr = await new Response(proc.stderr).text()
         return { status: 'error', message: stderr.trim() || 'bekk-core returned no output' }
     }
     try {
