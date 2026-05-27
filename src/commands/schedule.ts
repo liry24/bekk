@@ -15,6 +15,7 @@ import { configStore } from '../store'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const TASK_LABEL_PREFIX = 'bekk-backup'
+const TASK_LABEL_RE = /^bekk-backup-\d+$/
 
 export const nextTaskLabel = (entries: ScheduleEntry[]): string => {
     if (entries.length === 0) return `${TASK_LABEL_PREFIX}-0`
@@ -63,6 +64,22 @@ export const validateInterval = (val: string): string | true => {
     return true
 }
 
+const timeSchema = z.string().refine((val) => validateTime(val) === true)
+const dayOfWeekSchema = z.string().refine((val) => validateDayOfWeek(val) === true)
+const dayOfMonthSchema = z.string().refine((val) => validateDayOfMonth(val) === true)
+
+const scheduleConfigSchema = z.discriminatedUnion('type', [
+    z.object({ type: z.literal('daily'), time: timeSchema }),
+    z.object({ type: z.literal('weekly'), day: dayOfWeekSchema, time: timeSchema }),
+    z.object({ type: z.literal('monthly'), day: dayOfMonthSchema, time: timeSchema }),
+    z.object({ type: z.literal('interval'), interval: z.number().int().positive() }),
+])
+
+const scheduleEntrySchema = z.object({
+    label: z.string().regex(TASK_LABEL_RE),
+    config: scheduleConfigSchema,
+})
+
 const getProgramAndArgs = (): { program: string; args: string[] } => {
     const isBun = /bun(\.exe)?$/i.test(process.execPath)
     if (isBun) {
@@ -103,9 +120,17 @@ export const parseScheduleEntries = (raw: string): ScheduleEntry[] => {
     if (!raw || raw === '{}' || raw === '[]') return []
     try {
         const parsed: unknown = JSON.parse(raw)
-        if (Array.isArray(parsed)) return parsed as ScheduleEntry[]
+        if (Array.isArray(parsed)) {
+            return parsed.flatMap((entry) => {
+                const result = scheduleEntrySchema.safeParse(entry)
+                return result.success ? [result.data as ScheduleEntry] : []
+            })
+        }
         if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
-            return [{ label: `${TASK_LABEL_PREFIX}-0`, config: parsed as ScheduleConfig }]
+            const result = scheduleConfigSchema.safeParse(parsed)
+            if (result.success) {
+                return [{ label: `${TASK_LABEL_PREFIX}-0`, config: result.data as ScheduleConfig }]
+            }
         }
         return []
     } catch {
@@ -187,10 +212,16 @@ const addCmd = app
     .sub('add')
     .meta({ description: 'Register a scheduled backup task' })
     .flags({
-        daily: flag(z.string().optional().describe('Daily schedule (HH:MM)')),
-        weekly: flag(z.string().optional().describe('Weekly schedule ("DOW HH:MM")')),
-        monthly: flag(z.string().optional().describe('Monthly schedule ("DAY HH:MM")')),
-        interval: flag(intervalMinutesFlagSchema.optional().describe('Interval in minutes')),
+        daily: flag(z.string().optional().describe('Daily schedule (HH:MM)'), { type: 'string' }),
+        weekly: flag(z.string().optional().describe('Weekly schedule ("DOW HH:MM")'), {
+            type: 'string',
+        }),
+        monthly: flag(z.string().optional().describe('Monthly schedule ("DAY HH:MM")'), {
+            type: 'string',
+        }),
+        interval: flag(intervalMinutesFlagSchema.optional().describe('Interval in minutes'), {
+            type: 'string',
+        }),
     })
     .run(
         commandValidator(async ({ flags }) => {
@@ -299,7 +330,9 @@ const rmCmd = app
     .sub('rm')
     .meta({ description: 'Remove a scheduled backup task' })
     .flags({
-        all: flag(z.boolean().default(false).describe('Remove all scheduled tasks')),
+        all: flag(z.boolean().default(false).describe('Remove all scheduled tasks'), {
+            type: 'boolean',
+        }),
     })
     .run(
         commandValidator(async ({ flags }) => {

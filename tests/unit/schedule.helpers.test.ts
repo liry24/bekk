@@ -121,6 +121,21 @@ describe('parseScheduleEntries', () => {
         expect(parseScheduleEntries(JSON.stringify(entries))).toEqual(entries)
     })
 
+    it('drops malformed remote entries from stored arrays', () => {
+        const raw = JSON.stringify([
+            { label: 'bekk-backup-0', config: { type: 'daily', time: '09:00' } },
+            { label: '../../evil', config: { type: 'daily', time: '09:00' } },
+            { label: 'bekk-backup-1', config: { type: 'daily', time: '25:00' } },
+            { label: 'bekk-backup-2', config: { type: 'interval', interval: 0 } },
+            { label: 'bekk-backup-3', config: { type: 'interval', interval: 15 } },
+        ])
+
+        expect(parseScheduleEntries(raw)).toEqual([
+            { label: 'bekk-backup-0', config: { type: 'daily', time: '09:00' } },
+            { label: 'bekk-backup-3', config: { type: 'interval', interval: 15 } },
+        ])
+    })
+
     it('migrates legacy single-object format into array with label bekk-backup-0', () => {
         const legacy = JSON.stringify({ type: 'daily', time: '09:00' })
         const result = parseScheduleEntries(legacy)
@@ -146,5 +161,13 @@ describe('parseScheduleEntries', () => {
 
     it('returns [] for a plain object without "type" key', () => {
         expect(parseScheduleEntries('{"foo":"bar"}')).toEqual([])
+    })
+
+    it('does not migrate invalid legacy single-object schedules', () => {
+        expect(parseScheduleEntries(JSON.stringify({ type: 'daily', time: '24:00' }))).toEqual([])
+        expect(
+            parseScheduleEntries(JSON.stringify({ type: 'weekly', day: '../x', time: '09:00' })),
+        ).toEqual([])
+        expect(parseScheduleEntries(JSON.stringify({ type: 'interval', interval: -1 }))).toEqual([])
     })
 })
