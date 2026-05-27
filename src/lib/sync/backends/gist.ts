@@ -4,6 +4,7 @@ import { ofetch } from 'ofetch'
 import type { ConfigStore, SyncBackend, SyncData } from '#lib/types'
 
 import { configStore } from '../../../store'
+import { assertSafeProviderId, isSafeProviderId } from '../../apps/provider-id'
 import { resolveGistId } from '../../github'
 import { getConfigFileName, getHostHash } from '../../hosthash'
 
@@ -22,6 +23,14 @@ interface GistResponse {
     id: string
     html_url: string
     files: Record<string, { raw_url: string; content?: string }>
+}
+
+export const parseGistAppListFileName = (filename: string): string | null => {
+    const match = filename.match(/^apps_([a-z0-9_-]+)\.json$/)
+    if (!match) return null
+
+    const providerId = match[1]!
+    return isSafeProviderId(providerId) ? providerId : null
 }
 
 export const createGistBackend = (token: string): SyncBackend => {
@@ -57,7 +66,7 @@ export const createGistBackend = (token: string): SyncBackend => {
 
             for (const [providerId, apps] of Object.entries(data.appLists)) {
                 if (apps !== null) {
-                    files[`apps_${providerId}.json`] = {
+                    files[`apps_${assertSafeProviderId(providerId)}.json`] = {
                         content: JSON.stringify(apps, null, 2),
                     }
                 }
@@ -116,9 +125,9 @@ export const createGistBackend = (token: string): SyncBackend => {
             const appLists: Record<string, import('#lib/types').App[] | null> = {}
 
             for (const [filename, file] of Object.entries(gist.files)) {
-                const match = filename.match(/^apps_(.+)\.json$/)
-                if (match && file) {
-                    appLists[match[1]!] = destr(await fetchFile(file)) ?? null
+                const providerId = parseGistAppListFileName(filename)
+                if (providerId && file) {
+                    appLists[providerId] = destr(await fetchFile(file)) ?? null
                 }
             }
 

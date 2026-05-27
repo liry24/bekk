@@ -1,16 +1,33 @@
 import { commandValidator, flag } from '@crustjs/validate'
 import { t as styledT, dim as otuiDim } from '@opentui/core'
-import { join } from 'pathe'
 import { z } from 'zod'
 
+import { resolveSafeAppListPath } from '#lib/apps/provider-id'
 import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
-import type { SyncData } from '#lib/types'
+import type { App, SyncData } from '#lib/types'
 import { dim, select, createTaskList, writeScrollback, writeString } from '#lib/ui'
 
 import { app } from '../app'
 import { configStore } from '../store'
+
+export const writePulledAppLists = async (
+    appListsDir: string,
+    appLists: Record<string, App[] | null>,
+): Promise<number> => {
+    let fileCount = 0
+    for (const [providerId, apps] of Object.entries(appLists)) {
+        if (apps === null) continue
+
+        await Bun.write(
+            resolveSafeAppListPath(appListsDir, providerId),
+            JSON.stringify(apps, null, 2),
+        )
+        fileCount++
+    }
+    return fileCount
+}
 
 export const pullCmd = app
     .sub('pull')
@@ -21,11 +38,11 @@ export const pullCmd = app
                 .string()
                 .optional()
                 .describe('Pull from a specific backend by name (e.g. gist, work-r2)'),
-            { short: 'b' },
+            { short: 'b', type: 'string' },
         ),
         from: flag(
             z.string().optional().describe('Identifier override (Gist ID/URL or S3 object key)'),
-            { short: 'f' },
+            { short: 'f', type: 'string' },
         ),
     })
     .run(
@@ -93,16 +110,7 @@ export const pullCmd = app
                 await configStore.write(syncData.config)
 
                 const appListsDir = getAppListsDir()
-                let fileCount = 0
-                for (const [providerId, apps] of Object.entries(syncData.appLists)) {
-                    if (apps !== null) {
-                        await Bun.write(
-                            join(appListsDir, `${providerId}.json`),
-                            JSON.stringify(apps, null, 2),
-                        )
-                        fileCount++
-                    }
-                }
+                const fileCount = await writePulledAppLists(appListsDir, syncData.appLists)
                 taskList.update(writeTask, 'success', `${fileCount} app list(s)`)
             } catch (err) {
                 taskList.update(writeTask, 'error', formatError(err))

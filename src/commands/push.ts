@@ -6,6 +6,7 @@ import { join } from 'pathe'
 import { z } from 'zod'
 
 import { backupAllApps } from '#lib/apps'
+import { isSafeProviderId } from '#lib/apps/provider-id'
 import { formatError } from '#lib/error'
 import { getAppListsDir } from '#lib/paths'
 import { getEnabledBackends } from '#lib/sync/backends'
@@ -24,7 +25,7 @@ export const pushCmd = app
                 .string()
                 .optional()
                 .describe('Push to a specific backend by name (e.g. gist, work-r2)'),
-            { short: 'b' },
+            { short: 'b', type: 'string' },
         ),
     })
     .run(
@@ -44,6 +45,7 @@ export const pushCmd = app
                 const appLists: Record<string, App[] | null> = {}
                 for (const file of jsonFiles) {
                     const providerId = file.slice(0, -5)
+                    if (!isSafeProviderId(providerId)) continue
                     try {
                         const apps = (await Bun.file(join(appListsDir, file)).json()) as App[]
                         appLists[providerId] = apps
