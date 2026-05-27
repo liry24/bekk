@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > This project is work in progress.<br/>
-> Cross-platform builds are being performed, but it is currently tested only from Windows.<br/>
+> Runtime behavior is Windows-first; build/package verification may require WSL/Linux.<br/>
 > The backend, rustic, is currently in beta and may contain bugs.
 
 <div align="center">

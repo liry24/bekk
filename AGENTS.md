@@ -2,8 +2,8 @@
 
 ## Runtime & Package Manager
 
-- **Bun 1.3.13** is the only supported runtime. Use `bun` for all JS/TS commands.
-- `packageManager` is pinned to `bun@1.3.13`. Do not use npm, pnpm, or yarn.
+- **Bun 1.3.14** is the only supported runtime. Use `bun` for all JS/TS commands.
+- `packageManager` is pinned to `bun@1.3.14`. Do not use npm, pnpm, or yarn.
 - Install: `bun install --frozen-lockfile`
 
 ## Architecture
@@ -37,6 +37,8 @@ bun run fmt:check              # oxfmt check
 bun run lint                   # oxlint
 bun run check:types            # tsc --noEmit
 bun run cargo:check            # cargo check --manifest-path bekk-core/Cargo.toml
+bun run test:core              # build bekk-core, then run core integration tests
+bun test                       # default TS/unit/integration tests, excluding native schedulers
 
 # Build
 bun run build:core             # cargo build --manifest-path bekk-core/Cargo.toml
@@ -105,11 +107,13 @@ Commands live in `src/commands/*.ts`. Each exports a command built with `app.sub
 
 ## Testing
 
-No test suite exists currently. Do not add tests unless explicitly requested.
+- Default tests live under `tests/unit` and `tests/integration`; native scheduler live tests live under `tests/native`.
+- `bun run test:core` builds the debug `bekk-core` binary before running `tests/integration/bekk-core.test.ts`. The suite must fail clearly if the binary is missing.
+- Native scheduler tests are explicit opt-in scripts: `bun run test:native:windows`, `bun run test:native:linux`, and `bun run test:native:macos`. Each must fail on the wrong OS instead of silently skipping.
 
 ## Important Constraints
 
-- **Windows-first**: Primary testing is on Windows. Cross-platform builds exist but are less verified.
+- **Windows-first runtime, WSL build verification**: Primary CLI behavior is Windows-first, but build/package verification should be run from WSL/Linux when Windows `crust build` is unreliable.
 - **Password handling**: Password is passed to `bekk-core` via stdin (`--password-stdin` flag). The old `BEKK_REPO_PASSWORD` env var mechanism was removed.
 - **Config store**: Uses `@crustjs/store` with Zod validation. Config dir is OS-specific (`configDir('bekk')`).
 - **Scheduling**: The old `daemon` command and `Bun.cron` implementation were removed. Backups are scheduled via OS-native task schedulers (`src/lib/scheduler/`). The config field was renamed from `cronSchedule` to `scheduleConfigJson`.
