@@ -18,15 +18,19 @@ const _FG_COLOR: Record<number, RGBA> = {
     36: RGBA.fromHex('#00FFFF'), // cyan
 }
 
+const ESC = String.fromCharCode(0x1b)
+const ANSI_SGR_PATTERN = new RegExp(`(${ESC}\\[[0-9;]*m)`)
+const ANSI_PATTERN = new RegExp(`${ESC}\\[[0-9;]*[a-zA-Z]`, 'g')
+
 export const ansiToStyledText = (str: string): StyledText => {
     const chunks: TextChunk[] = []
-    const parts = str.split(/(\x1b\[[0-9;]*m)/)
+    const parts = str.split(ANSI_SGR_PATTERN)
 
     let fg: RGBA | undefined = undefined
     let attrs = 0
 
     for (const part of parts) {
-        if (part.startsWith('\x1b[') && part.endsWith('m')) {
+        if (part.startsWith(`${ESC}[`) && part.endsWith('m')) {
             const codeStr = part.slice(2, -1)
             const codes = codeStr === '' ? [0] : codeStr.split(';').map(Number)
             for (const code of codes) {
@@ -58,8 +62,7 @@ export const padStart = (s: string, len: number): string => {
     return ' '.repeat(len - visibleLen) + s
 }
 
-export const stripAnsi = (s: string): string =>
-    s.replace(new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*[a-zA-Z]`, 'g'), '')
+export const stripAnsi = (s: string): string => s.replace(ANSI_PATTERN, '')
 
 export const wrapLines = (text: string, maxWidth: number): string[] => {
     const lines: string[] = []

@@ -28,13 +28,14 @@ export const cleanCmd = app
                 .boolean()
                 .default(false)
                 .describe('Dry run — preview prune results without making changes'),
-            { short: 'd' },
+            { short: 'd', type: 'boolean' },
         ),
         'instant-delete': flag(
             z
                 .boolean()
                 .default(false)
                 .describe('Delete unreferenced pack files immediately instead of marking them'),
+            { type: 'boolean' },
         ),
     })
     .run(

@@ -15,7 +15,7 @@ export const app = new Crust('bekk')
     .meta({ description: 'Cross-platform backup CLI' })
     .use(versionPlugin(pkg.version))
     .use(noColorPlugin())
-    .use(didYouMeanPlugin())
+    .use(didYouMeanPlugin({ mode: 'help' }))
     .use(helpPlugin())
     .use(completionPlugin({ version: pkg.version }))
     .use(

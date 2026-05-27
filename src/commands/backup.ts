@@ -51,9 +51,12 @@ export const backupCmd = app
                 .boolean()
                 .default(false)
                 .describe('Dry run — preview changes without writing to the repository'),
-            { short: 'd' },
+            { short: 'd', type: 'boolean' },
         ),
-        tag: flag(z.string().optional().describe('Tag to attach to the snapshot'), { short: 't' }),
+        tag: flag(z.string().optional().describe('Tag to attach to the snapshot'), {
+            short: 't',
+            type: 'string',
+        }),
     })
     .run(
         commandValidator(async ({ flags }) => {

@@ -13,7 +13,7 @@ export const snapshotsCmd = app
     .sub('snapshots')
     .meta({ description: 'List all snapshots in the backup repository', aliases: ['snap'] })
     .flags({
-        json: flag(z.boolean().default(false).describe('Output raw JSON')),
+        json: flag(z.boolean().default(false).describe('Output raw JSON'), { type: 'boolean' }),
     })
     .run(async ({ flags }) => {
         const snaps = await withRepoAuth(async (cfg, password) => {

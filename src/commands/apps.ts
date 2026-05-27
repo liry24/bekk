@@ -109,7 +109,7 @@ const appsRestoreCmd = app
     .flags({
         'dry-run': flag(
             z.boolean().default(false).describe('Preview changes without installing anything'),
-            { short: 'd' },
+            { short: 'd', type: 'boolean' },
         ),
     })
     .run(

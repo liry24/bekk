@@ -15,21 +15,59 @@ import {
 export const configStore = createStore({
     dirPath: configDir('bekk'),
     fields: {
-        sourcePaths: field(z.array(z.string()), { default: [] }),
-        repoPath: field(z.string(), { default: '' }),
-        gistId: field(z.string(), { default: '' }),
-        scheduleConfigJson: field(z.string(), { default: '[]' }),
-        gistEnabled: field(z.boolean(), { default: false }),
-        s3DestinationsJson: field(z.string(), { default: '[]' }),
-        providerConfigsJson: field(z.string(), { default: '{}' }),
-        compression: field(z.number().int().min(-7).max(22), { default: DEFAULT_COMPRESSION }),
-        extraVerify: field(z.boolean(), { default: DEFAULT_EXTRA_VERIFY }),
-        packSizeMib: field(z.number().int().positive(), { default: DEFAULT_PACK_SIZE_MIB }),
-        chunkSizeMib: field(z.number().int().positive(), { default: DEFAULT_CHUNK_SIZE_MIB }),
+        sourcePaths: field(z.array(z.string()), {
+            type: 'string',
+            array: true,
+            default: [] as string[],
+        }),
+        repoPath: field(z.string(), {
+            type: 'string',
+            default: '',
+        }),
+        gistId: field(z.string(), {
+            type: 'string',
+            default: '',
+        }),
+        scheduleConfigJson: field(z.string(), {
+            type: 'string',
+            default: '[]',
+        }),
+        gistEnabled: field(z.boolean(), {
+            type: 'boolean',
+            default: false,
+        }),
+        s3DestinationsJson: field(z.string(), {
+            type: 'string',
+            default: '[]',
+        }),
+        providerConfigsJson: field(z.string(), {
+            type: 'string',
+            default: '{}',
+        }),
+        compression: field(z.number().int().min(-7).max(22), {
+            type: 'number',
+            default: DEFAULT_COMPRESSION,
+        }),
+        extraVerify: field(z.boolean(), {
+            type: 'boolean',
+            default: DEFAULT_EXTRA_VERIFY,
+        }),
+        packSizeMib: field(z.number().int().positive(), {
+            type: 'number',
+            default: DEFAULT_PACK_SIZE_MIB,
+        }),
+        chunkSizeMib: field(z.number().int().positive(), {
+            type: 'number',
+            default: DEFAULT_CHUNK_SIZE_MIB,
+        }),
         snapshotLimit: field(z.number().int().positive().min(1), {
+            type: 'number',
             default: DEFAULT_SNAPSHOT_LIMIT,
         }),
-        savedPassword: field(z.string(), { default: '' }),
+        savedPassword: field(z.string(), {
+            type: 'string',
+            default: '',
+        }),
     },
 })
 

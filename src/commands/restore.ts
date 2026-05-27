@@ -23,14 +23,15 @@ export const restoreCmd = app
     .flags({
         snapshot: flag(
             z.string().default('latest').describe('Snapshot ID to restore (default: latest)'),
-            { short: 's' },
+            { short: 's', type: 'string' },
         ),
         target: flag(z.string().optional().describe('Destination path for restored files'), {
             short: 't',
+            type: 'string',
         }),
         'dry-run': flag(
             z.boolean().default(false).describe('Dry run — preview without writing files'),
-            { short: 'd' },
+            { short: 'd', type: 'boolean' },
         ),
     })
     .run(
