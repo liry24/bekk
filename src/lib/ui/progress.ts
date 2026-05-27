@@ -22,18 +22,35 @@ const TEXT = RGBA.fromHex('#FFFFFF')
 const DIM = RGBA.fromHex('#888888')
 const BAR_FILL = RGBA.fromHex('#00FF00')
 const BAR_EMPTY = RGBA.fromHex('#333333')
+const MIN_REDRAW_INTERVAL_MS = 50
 
 export interface RichProgress {
     update(options: { title?: string; bar?: number; details?: string[] }): void
     finish(options?: { title?: string }): Promise<void>
 }
 
+export const accumulateProgressFrameTime = (
+    elapsedMs: number,
+    deltaMs: number,
+    intervalMs: number,
+): { elapsedMs: number; advanced: boolean } => {
+    const nextElapsedMs = elapsedMs + Math.max(0, deltaMs)
+    if (nextElapsedMs < intervalMs) return { elapsedMs: nextElapsedMs, advanced: false }
+    return { elapsedMs: nextElapsedMs % intervalMs, advanced: true }
+}
+
+const sameDetails = (a: string[], b: string[]): boolean =>
+    a.length === b.length && a.every((value, index) => value === b[index])
+
 export const createRichProgress = async (): Promise<RichProgress> => {
     const r = await getRenderer()
     const spinner = getRandomSpinner()
+    const redrawIntervalMs = Math.max(MIN_REDRAW_INTERVAL_MS, spinner.interval)
 
     let frameIdx = 0
+    let elapsedFrameMs = redrawIntervalMs
     let finished = false
+    let dirty = true
     let title = ''
     let bar: number | undefined
     let details: string[] = []
@@ -59,6 +76,9 @@ export const createRichProgress = async (): Promise<RichProgress> => {
         const frame = spinner.frames[frameIdx % spinner.frames.length]!
         const termWidth = r.width
         const totalHeight = 6 + details.length
+        const shouldResize = fb.width !== termWidth || totalHeight > maxTotalHeight
+
+        if (!dirty && !shouldResize) return
 
         // Track maximum height so we never shrink the framebuffer during
         // live updates (which would leave ghost text on screen).
@@ -141,10 +161,16 @@ export const createRichProgress = async (): Promise<RichProgress> => {
 
         setFooterHeight(r, maxTotalHeight + getExtraFooterHeight())
         r.requestRender()
+        dirty = false
     }
 
-    const frameCallback = async (_dt: number) => {
+    const frameCallback = async (dt: number) => {
+        const next = accumulateProgressFrameTime(elapsedFrameMs, dt, redrawIntervalMs)
+        elapsedFrameMs = next.elapsedMs
+        if (!next.advanced) return
+
         frameIdx++
+        dirty = true
         refresh()
     }
 
@@ -154,9 +180,18 @@ export const createRichProgress = async (): Promise<RichProgress> => {
     return {
         update(opts: { title?: string; bar?: number; details?: string[] }): void {
             if (finished) return
-            if (opts.title !== undefined) title = opts.title
-            if (opts.bar !== undefined) bar = opts.bar
-            if (opts.details !== undefined) details = opts.details
+            if (opts.title !== undefined && opts.title !== title) {
+                title = opts.title
+                dirty = true
+            }
+            if (opts.bar !== undefined && opts.bar !== bar) {
+                bar = opts.bar
+                dirty = true
+            }
+            if (opts.details !== undefined && !sameDetails(opts.details, details)) {
+                details = opts.details
+                dirty = true
+            }
             refresh()
         },
 
